@@ -7,7 +7,15 @@
 
 import { hasVetoConflict, viableCoalitions } from "./generator";
 import type { Evaluation, GameState, Offer, Party } from "./types";
-import { clamp, coalitionSeats, daysLeft, ideologyDistance, optionLabel, portfoliosOf } from "./types";
+import {
+  clamp,
+  coalitionSeats,
+  daysLeft,
+  ideologyDistance,
+  isHumanSeat,
+  optionLabel,
+  portfoliosOf,
+} from "./types";
 
 /** How much more a ministry is worth when it sits high on a party's wish list. */
 const WANT_BONUS = [1.9, 1.55, 1.3, 1.15];
@@ -339,7 +347,8 @@ export const signingProblems = (state: GameState): string[] => {
     problems.push("Two of your partners have sworn never to sit together.");
   }
   for (const [key, evaluation] of Object.entries(coalitionCheck(state))) {
-    if (!evaluation.accepted) {
+    // A player who accepted these terms has already answered for them.
+    if (!evaluation.accepted && !isHumanSeat(state, key)) {
       problems.push(`The ${state.parliament.parties[key].name} would walk out before the signing.`);
     }
   }

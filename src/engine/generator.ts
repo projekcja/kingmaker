@@ -3,7 +3,7 @@
 import { ISSUES, PORTFOLIOS, PORTFOLIOS_BY_KEY } from "./content";
 import { BLURBS, COUNTRIES, FIRST_NAMES, PARTY_CORE, SURNAMES } from "./names";
 import { Rng } from "./rng";
-import type { Coalition, GameState, Ideology, Parliament, Party } from "./types";
+import type { Coalition, GameState, Ideology, Parliament, Party, Seats } from "./types";
 import { ideologyDistance } from "./types";
 
 interface Archetype {
@@ -281,6 +281,8 @@ export interface NewGameOptions {
   partyCount?: number;
   totalSeats?: number;
   days?: number;
+  /** Party key -> player id. Omit for a game the engine plays on both sides. */
+  seats?: Seats;
 }
 
 /** Generate a scenario that is hung, veto-constrained, and actually solvable. */
@@ -321,6 +323,8 @@ export const newGame = (options: NewGameOptions = {}): GameState => {
       ],
       rngState: rng.state,
       seed,
+      seats: options.seats ?? {},
+      pending: null,
       finished: false,
       outcome: null,
       epilogue: null,

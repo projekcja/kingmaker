@@ -16,7 +16,15 @@ import {
   stabilityScore,
 } from "./negotiation";
 import type { Evaluation, GameState, LogEntry, Offer } from "./types";
-import { clamp, coalitionSeats, ideologyDistance, optionLabel, portfoliosOf } from "./types";
+import {
+  clamp,
+  coalitionSeats,
+  ideologyDistance,
+  isHumanSeat,
+  optionLabel,
+  portfoliosOf,
+  whoseTurn,
+} from "./types";
 
 export type Action =
   /** Sit down with a party: reveals their demands, warms them slightly. */
@@ -32,7 +40,14 @@ export type Action =
   /** Throw a partner out and reclaim their ministries. Costs no time. */
   | { type: "dismiss"; partyKey: string }
   /** Take the agreement to the president. Ends the game. */
-  | { type: "sign" };
+  | { type: "sign" }
+  /**
+   * A human-run party's answer to the package on the table.
+   *
+   * The decision is recorded rather than computed, which is what lets a game
+   * with people in it stay replayable from its action list.
+   */
+  | { type: "respond"; accept: boolean };
 
 export interface ActionResult {
   state: GameState;
@@ -57,20 +72,38 @@ const log = (state: GameState, kind: LogEntry["kind"], text: string): void => {
  * Days an action costs. Hammering out a full package takes longer than a
  * courtesy call; throwing a partner out is brutal but instant.
  */
-export const actionCost = (action: Action): number => {
+export const actionCost = (state: GameState, action: Action): number => {
   switch (action.type) {
     case "dismiss":
     case "sign":
       return 0;
     case "offer":
+      // Tabling a package with a person costs nothing until they answer, so
+      // that their thinking time is not charged to the mandate.
+      return isHumanSeat(state, action.offer.partyKey) ? 0 : 2;
+    case "respond":
       return 2;
     default:
       return 1;
   }
 };
 
-export const isLegal = (state: GameState, action: Action): boolean => {
+/**
+ * Whether a move is allowed, and allowed *by this player*.
+ *
+ * `actorId` is optional: a local single-player game passes nothing and only
+ * the rules are checked.
+ */
+export const isLegal = (state: GameState, action: Action, actorId?: string): boolean => {
   if (state.finished) return false;
+
+  const turn = whoseTurn(state);
+  if (actorId !== undefined && turn.playerId !== null && turn.playerId !== actorId) return false;
+
+  // While a package sits with a party, the answer is the only move on the board.
+  if (state.pending !== null) return action.type === "respond";
+  if (action.type === "respond") return false;
+
   switch (action.type) {
     case "meet":
     case "squeeze":
@@ -120,10 +153,16 @@ export const applyAction = (input: GameState, action: Action): ActionResult => {
     case "sign":
       message = doSign(state);
       break;
+    case "respond": {
+      const result = doRespond(state, action.accept, rng);
+      message = result.message;
+      evaluation = result.evaluation;
+      break;
+    }
   }
 
   const events: LogEntry[] = [];
-  const cost = actionCost(action);
+  const cost = actionCost(input, action);
   if (cost > 0 && !state.finished) {
     // A two-day negotiation begun on the last day still resolves, but the
     // mandate itself cannot run past its final day.
@@ -155,6 +194,12 @@ const doMeet = (state: GameState, partyKey: string, rng: Rng): string => {
     : `A second conversation with ${party.leader}. Warmer, but nothing new.`;
 };
 
+/**
+ * Put a package on the table.
+ *
+ * A party the engine plays answers on the spot. A party with a person in its
+ * seat is handed the offer instead, and the game waits.
+ */
 const doOffer = (
   state: GameState,
   offer: Offer,
@@ -163,7 +208,54 @@ const doOffer = (
   const party = state.parliament.parties[offer.partyKey];
   const evaluation = evaluate(state, offer);
 
-  if (evaluation.accepted) {
+  if (isHumanSeat(state, offer.partyKey)) {
+    state.pending = { offer, tabledOn: state.day };
+    log(state, "info", `You table a package with the ${party.name} and wait.`);
+    return {
+      message: `The package is with ${party.leader}. Nothing moves until they answer.`,
+      evaluation,
+    };
+  }
+
+  return { message: settleOffer(state, offer, evaluation.accepted, rng), evaluation };
+};
+
+/** A human-run party answers the package tabled with them. */
+const doRespond = (
+  state: GameState,
+  accept: boolean,
+  rng: Rng,
+): { message: string; evaluation: Evaluation } => {
+  const pending = state.pending;
+  if (!pending) {
+    return {
+      message: "There is nothing on the table to answer.",
+      evaluation: evaluate(state, { partyKey: state.playerKey, portfolios: [], commitments: {} }),
+    };
+  }
+
+  state.pending = null;
+  const evaluation = evaluate(state, pending.offer);
+  const party = state.parliament.parties[pending.offer.partyKey];
+  const message = settleOffer(state, pending.offer, accept, rng);
+
+  // Turning down a deal your own numbers liked is a choice, and it is noticed.
+  if (!accept && evaluation.accepted) {
+    log(state, "trouble", `The ${party.name} rejects terms its own people called generous.`);
+  }
+  return { message, evaluation };
+};
+
+/**
+ * Apply an accepted or rejected package.
+ *
+ * Shared by both paths so that a decision made by a person and one made by the
+ * engine have exactly the same consequences.
+ */
+const settleOffer = (state: GameState, offer: Offer, accepted: boolean, rng: Rng): string => {
+  const party = state.parliament.parties[offer.partyKey];
+
+  if (accepted) {
     if (!state.coalition.members.includes(party.key)) state.coalition.members.push(party.key);
 
     // Ministries in the package move to them; anything they held and is no
@@ -182,20 +274,15 @@ const doOffer = (
       `The ${party.name} (${party.seats} seats) joins the coalition. Total: ${coalitionSeats(state)} of ${state.parliament.majority} needed.`,
     );
     applyCommitmentMood(state, offer.commitments);
-    return {
-      message: `${party.leader} shakes your hand. The ${party.name} is in.`,
-      evaluation,
-    };
+    return `${party.leader} shakes your hand. The ${party.name} is in.`;
   }
 
+  const evaluation = evaluate(state, offer);
   // A serious lowball is remembered.
   const insult = evaluation.margin < -evaluation.price * 0.5;
   party.mood = clamp(party.mood - (insult ? rng.range(4, 8) : rng.range(1, 3)), -50, 50);
   log(state, "info", `The ${party.name} rejects your offer.`);
-  return {
-    message: evaluation.complaints[0] ?? `${party.leader} declines, without explaining why.`,
-    evaluation,
-  };
+  return evaluation.complaints[0] ?? `${party.leader} declines, without explaining why.`;
 };
 
 const doCommit = (state: GameState, issueKey: string, position: number): string => {
@@ -301,9 +388,12 @@ const checkEndOfMandate = (state: GameState): void => {
     return;
   }
 
-  // A partner whose price has risen past what they were given walks out.
+  // A partner whose price has risen past what they were given walks out —
+  // but only one the engine plays. A party with a person in its seat stays
+  // until that person is thrown out or leaves: their membership was their
+  // decision, and the arithmetic does not get to overrule it.
   for (const [key, evaluation] of Object.entries(coalitionCheck(state))) {
-    if (evaluation.accepted) continue;
+    if (evaluation.accepted || isHumanSeat(state, key)) continue;
     const party = state.parliament.parties[key];
     state.coalition.members = state.coalition.members.filter((member) => member !== key);
     for (const portfolioKey of portfoliosOf(state.coalition, key)) {

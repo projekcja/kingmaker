@@ -25,6 +25,50 @@ npm test           # engine + interface test suite
 npm run typecheck  # tsc --noEmit
 ```
 
+## Multiplayer
+
+One player forms the government; any other party can have a person in its seat, and answers offers
+itself instead of being played by the engine. A party with nobody in its seat stays engine-run, so
+**the single-player game is just the case where no seats are claimed** — not a separate mode.
+
+To play alone against the engine, start a game and press *Start the mandate* without claiming
+anything. To test two-handed:
+
+1. Open the app, create a game, and note the table id.
+2. Claim the party marked **mandate** — that is the formateur.
+3. Open a **second tab** and join the same table id. That tab is a different player: identity
+   lives in `sessionStorage`, which is per-tab.
+4. Claim another party there, then start the mandate from either tab.
+
+Offer that party a package and the board hands over: the formateur is locked out, the other tab
+gets the offer with its own private read of what the deal is worth, and answers. Both tabs update
+live.
+
+The engine's verdict is advice at that point, not a ruling. A player may accept terms the
+arithmetic hated or refuse terms it liked, and the coalition holds either way — a party with a
+person in its seat is never ejected automatically, because its membership was a decision rather
+than a calculation.
+
+### Persistence and history
+
+Nothing about the live state is stored. A saved game is a seed, a seat map, and an append-only list
+of moves — a few hundred bytes — replayed through the engine on load. The action list *is* the
+history, and the record panel renders it.
+
+Each move is stored as its own record (`km:game:<id>:action:<n>`) rather than as an entry in a
+mutable array, so two players writing at once cannot clobber one another and the ordering is free.
+A move onto a turn number that is already taken comes back as a conflict rather than overwriting it.
+
+Storage sits behind the `Transport` interface in `src/net/transport.ts`. The shipped implementation
+is `LocalTransport`: localStorage for the data, BroadcastChannel for live updates between tabs.
+It is deliberately shaped like a hosted document store, so pointing the game at a shared backend is
+a matter of writing one more implementation of that interface — the game itself does not change.
+
+Two constraints worth knowing. **Seats lock when play begins**, because whether a party is human-run
+changes how its offers resolve, and so changes how the stored log replays. And a saved game records
+the `RULES_VERSION` that produced it; retuning any number in the engine means old games replay as
+different games, so a mismatch is refused rather than silently mangled.
+
 ## How the game works
 
 Every parliament is generated from a seed and validated before you see it: it is always hung,
@@ -62,6 +106,7 @@ government and it is scored for stability and given an expected lifespan.
 | Squeeze in public | 1 day | May cut a party's price, may blow up in your face |
 | Rally the faithful | 1 day | Restores your standing at home; partners read it as bad faith |
 | Break off talks | free | Ejects a partner and returns their ministries to the pool |
+| Answer an offer | 2 days | A seated party accepts or refuses; time passes only once they decide |
 
 Overnight, things happen without you: ultimatums, scandals, floor-crossings that change the
 arithmetic, leaks, and backbench letters. Any event that would leave you with no path to a
@@ -78,8 +123,14 @@ src/engine/     the rules, with no reference to the DOM
   negotiation.ts  pricing, evaluation, leverage, stability
   events.ts       overnight events, with rollback guards
   actions.ts      the turn loop
+src/net/        multiplayer plumbing
+  transport.ts    the storage interface a backend must satisfy
+  localTransport.ts  localStorage + BroadcastChannel; two tabs, two players
+  replay.ts       rebuilding a game from its seed and its moves
+  identity.ts     per-tab player identity
+  useGame.ts      React binding: load, replay, submit, stay in sync
 src/ui/         React components
-tests/          engine and interface tests, plus a headless bot
+tests/          engine, multiplayer and interface tests, plus a headless bot
 scripts/        balance probe: npx vite-node scripts/balance.ts
 ```
 

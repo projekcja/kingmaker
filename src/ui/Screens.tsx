@@ -1,62 +1,7 @@
-import { useState } from "react";
-
 import { expectedMonths, stabilityScore } from "../engine/negotiation";
 import type { GameState, Outcome } from "../engine/types";
 import { coalitionSeats } from "../engine/types";
 import { partyColour } from "./format";
-
-interface StartProps {
-  onStart: (seed?: number) => void;
-}
-
-export const StartScreen = ({ onStart }: StartProps) => {
-  const [seed, setSeed] = useState("");
-
-  return (
-    <div className="screen">
-      <h1>Kingmaker</h1>
-      <div className="tagline">Twenty-eight days to build a government out of people who cannot stand each other.</div>
-
-      <p>
-        The election settled nothing. You lead one of the two largest parties in a hung parliament,
-        and the president has handed you the mandate: find sixty-one seats, or the country votes
-        again and you answer for it.
-      </p>
-
-      <ul className="rules">
-        <li>
-          <strong>Everything costs days.</strong> A meeting takes one, a full negotiation takes two,
-          and the mandate does not extend.
-        </li>
-        <li>
-          <strong>You pay in ministries and in policy.</strong> Both are finite, and every position
-          you promise one party is read by all the others.
-        </li>
-        <li>
-          <strong>Leverage is structural.</strong> A party that sits on every route to a majority
-          knows it. Open a second route and its price falls on its own.
-        </li>
-        <li>
-          <strong>Your own party is watching.</strong> Concede too much and they will replace you
-          before the voters get the chance.
-        </li>
-      </ul>
-
-      <div className="seed-row">
-        <button className="primary" onClick={() => onStart(seed ? Number(seed) : undefined)}>
-          Accept the mandate
-        </button>
-        <input
-          type="text"
-          inputMode="numeric"
-          placeholder="seed (optional)"
-          value={seed}
-          onChange={(event) => setSeed(event.target.value.replace(/[^0-9]/g, ""))}
-        />
-      </div>
-    </div>
-  );
-};
 
 const OUTCOME_TITLE: Record<Outcome, string> = {
   government: "You have a government",

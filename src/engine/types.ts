@@ -106,6 +106,35 @@ export interface LogEntry {
 
 export type Outcome = "government" | "collapsed" | "expired" | "deposed";
 
+/**
+ * Bumped whenever a rule or a tuned number changes.
+ *
+ * A stored game is only a seed plus a list of actions, so it is replayed
+ * against whatever code is running now. Different rules replay to a different
+ * game, which is why a saved game records the version that produced it.
+ */
+export const RULES_VERSION = 1;
+
+/**
+ * Who sits behind each party: a player id, or absent for one the engine plays.
+ *
+ * An empty map is the single-player game, so multiplayer is a superset of it
+ * rather than a separate mode.
+ */
+export type Seats = Record<string, string>;
+
+/**
+ * A package tabled with a human-run party, waiting on their answer.
+ *
+ * While this is set the formateur cannot act: the game belongs to whoever
+ * holds that seat.
+ */
+export interface PendingOffer {
+  offer: Offer;
+  /** The day it was tabled; time only passes once it is answered. */
+  tabledOn: number;
+}
+
 export interface GameState {
   parliament: Parliament;
   playerKey: string;
@@ -118,6 +147,10 @@ export interface GameState {
   /** Serialisable PRNG cursor, so a game is fully reproducible from its seed. */
   rngState: number;
   seed: number;
+  /** Party key -> player id. Parties absent from this map are played by the engine. */
+  seats: Seats;
+  /** Set while a human-run party owes the formateur an answer. */
+  pending: PendingOffer | null;
   finished: boolean;
   outcome: Outcome | null;
   /** Set when the game ends, for the summary screen. */
@@ -174,3 +207,28 @@ export interface Evaluation {
   margin: number;
   accepted: boolean;
 }
+
+
+/** The player behind a party, or null when the engine plays it. */
+export const seatHolder = (state: GameState, partyKey: string): string | null =>
+  state.seats[partyKey] ?? null;
+
+export const isHumanSeat = (state: GameState, partyKey: string): boolean =>
+  state.seats[partyKey] !== undefined;
+
+/**
+ * Whose move it is: the party whose seat may act, and the player in it.
+ *
+ * With a package on the table the turn belongs to the party answering it;
+ * otherwise it belongs to the formateur.
+ */
+export const whoseTurn = (
+  state: GameState,
+): { partyKey: string; playerId: string | null; awaitingAnswer: boolean } => {
+  const partyKey = state.pending ? state.pending.offer.partyKey : state.playerKey;
+  return {
+    partyKey,
+    playerId: seatHolder(state, partyKey),
+    awaitingAnswer: state.pending !== null,
+  };
+};

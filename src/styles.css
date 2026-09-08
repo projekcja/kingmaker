@@ -648,3 +648,11 @@ input[type="number"] {
   background: #4d2a23;
   color: #ecb0a4;
 }
+
+/* A board you may look at but not touch, while another player moves. */
+.board.locked .column:nth-child(1),
+.board.locked .column:nth-child(2) {
+  opacity: 0.55;
+  pointer-events: none;
+  filter: saturate(0.7);
+}

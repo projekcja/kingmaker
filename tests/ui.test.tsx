@@ -1,7 +1,7 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { applyAction } from "../src/engine/actions";
+import { applyAction, suggestedTargets } from "../src/engine/actions";
 import { newGame } from "../src/engine/generator";
 import type { GameState } from "../src/engine/types";
 import { AgreementPanel } from "../src/ui/AgreementPanel";
@@ -9,7 +9,9 @@ import { Header } from "../src/ui/Header";
 import { LogPanel } from "../src/ui/LogPanel";
 import { NegotiationPanel } from "../src/ui/NegotiationPanel";
 import { PartyList } from "../src/ui/PartyList";
-import { EndScreen, StartScreen } from "../src/ui/Screens";
+import { ResponsePanel } from "../src/ui/ResponsePanel";
+import { SeatingScreen } from "../src/ui/Lobby";
+import { EndScreen } from "../src/ui/Screens";
 import { cheapestAcceptableOffer, playOut } from "./bot";
 
 const noop = () => undefined;
@@ -34,12 +36,6 @@ const renderBoard = (state: GameState, partyKey: string): string =>
   ].join("\n");
 
 describe("interface", () => {
-  it("renders the opening screen", () => {
-    const html = renderToString(<StartScreen onStart={noop} />);
-    expect(html).toContain("Kingmaker");
-    expect(html).toContain("Accept the mandate");
-  });
-
   it("renders the whole board on day one", () => {
     const state = newGame({ seed: 2024 });
     const html = renderBoard(state, state.playerKey);
@@ -132,5 +128,69 @@ describe("interface", () => {
       <EndScreen state={expired} onRestart={noop} onReplay={noop} />,
     );
     expect(lossHtml).toContain("The mandate expires");
+  });
+});
+
+describe("multiplayer interface", () => {
+  it("shows a seated party the package on the table and its own read", () => {
+    const solo = newGame({ seed: 3101 });
+    const humanParty = suggestedTargets(solo)[0];
+    const state = newGame({
+      seed: 3101,
+      seats: { [solo.playerKey]: "alice", [humanParty]: "bob" },
+    });
+
+    const wanted = state.parliament.parties[humanParty].portfolioWants[0];
+    const tabled = applyAction(state, {
+      type: "offer",
+      offer: { partyKey: humanParty, portfolios: [wanted], commitments: {} },
+    }).state;
+
+    const html = renderToString(<ResponsePanel state={tabled} onAction={noop} />);
+    expect(html).toContain("On the table");
+    expect(html).toContain(escapeHtml(tabled.parliament.portfolios[wanted].name));
+    expect(html).toContain("Accept and join");
+    expect(html).toContain("Turn it down");
+  });
+
+  it("renders nothing when there is no package to answer", () => {
+    const state = newGame({ seed: 3102 });
+    expect(renderToString(<ResponsePanel state={state} onAction={noop} />)).toBe("");
+  });
+
+  it("renders the seating screen with every party and who holds it", () => {
+    const state = newGame({ seed: 3103 });
+    const parties = Object.values(state.parliament.parties).map((party) => ({
+      key: party.key,
+      name: party.name,
+      leader: party.leader,
+      seats: party.seats,
+    }));
+
+    const html = renderToString(
+      <SeatingScreen
+        record={{
+          id: "abc123",
+          seed: 3103,
+          rulesVersion: 1,
+          daysTotal: 28,
+          partyCount: 8,
+          totalSeats: 120,
+          seats: { [state.playerKey]: "alice" },
+          players: { alice: "Alice" },
+          status: "lobby",
+          createdAt: 0,
+        }}
+        parties={parties}
+        formateurKey={state.playerKey}
+        onSave={noop}
+        onLeave={noop}
+      />,
+    );
+
+    expect(html).toContain("Take your seats");
+    expect(html).toContain("abc123");
+    expect(html).toContain("Alice");
+    for (const party of parties) expect(html).toContain(escapeHtml(party.name));
   });
 });

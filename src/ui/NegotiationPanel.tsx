@@ -10,7 +10,7 @@ import {
   temperature,
 } from "../engine/negotiation";
 import type { GameState, Offer } from "../engine/types";
-import { describeIdeology, optionLabel, portfoliosOf } from "../engine/types";
+import { describeIdeology, isHumanSeat, optionLabel, portfoliosOf } from "../engine/types";
 import { moodLabel, partyColour, pragmatismLabel, priceBand } from "./format";
 
 interface Props {
@@ -282,7 +282,9 @@ export const NegotiationPanel = ({ state, partyKey, onAction }: Props) => {
 
         <div className="actions" style={{ marginTop: 12 }}>
           <button className="primary" onClick={() => onAction({ type: "offer", offer })}>
-            Present the offer ({actionCost({ type: "offer", offer })} days)
+            {isHumanSeat(state, partyKey)
+              ? `Table the offer with ${party.leader}`
+              : `Present the offer (${actionCost(state, { type: "offer", offer })} days)`}
           </button>
           <button
             onClick={() => {
