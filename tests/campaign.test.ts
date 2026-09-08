@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { greedyOffer, randomOffer } from "../src/bots";
 import { validateOffer } from "../src/engine/allocation";
-import { applyAction, newCampaign, rollSeats, standings } from "../src/engine/campaign";
+import { applyAction, newCampaign, rollSeats, runElection, standings } from "../src/engine/campaign";
 import { CARDS } from "../src/engine/deck";
 import { ELECTORAL_THRESHOLD, MAJORITY, TOTAL_SEATS } from "../src/engine/parties";
 import { Rng } from "../src/engine/rng";
@@ -156,7 +156,47 @@ describe("elections", () => {
     expect(state.log.some((entry) => entry.text.includes("dissolves itself"))).toBe(true);
   });
 
-  it("clears every promise when a government falls", () => {
+  it("carries coalition agreements through an election", () => {
+    const state = newCampaign({ seed: 707, humanParty: "likud", bots: [] });
+    const partner = biddableParties(state).find((party) => party.key === "shas");
+    expect(partner).toBeDefined();
+    state.parties.shas.heldBy = "you";
+    state.parties.shas.package = ["defense", "finance"];
+
+    const seatsBefore = state.parties.shas.seats;
+    runElection(state, new Rng(707));
+
+    // The deal stands; only the arithmetic under it has moved.
+    expect(state.parties.shas.heldBy).toBe("you");
+    expect(state.parties.shas.package).toEqual(["defense", "finance"]);
+    expect(freeMinistries(state, "you")).not.toContain("defense");
+    expect(state.parties.shas.seats).toBeGreaterThan(0);
+    expect(seatsBefore).toBeGreaterThan(0);
+    expect(state.primeMinister).toBeNull();
+    expect(state.phase).toBe("forming");
+  });
+
+  it("returns the portfolios of a party voted out of the Knesset", () => {
+    const state = newCampaign({ seed: 708, humanParty: "likud", bots: [] });
+    state.parties.labor.heldBy = "you";
+    state.parties.labor.package = ["defense"];
+    expect(freeMinistries(state, "you")).not.toContain("defense");
+
+    // Run elections until Labor falls below the threshold and drops out.
+    const rng = new Rng(4);
+    for (let attempt = 0; attempt < 60; attempt += 1) {
+      runElection(state, rng);
+      if (!state.parties.labor) break;
+      state.parties.labor.heldBy = "you";
+      state.parties.labor.package = ["defense"];
+    }
+    if (state.parties.labor) return; // never dropped out on this seed
+
+    expect(freeMinistries(state, "you")).toContain("defense");
+    expect(seatTotal(state)).toBe(TOTAL_SEATS);
+  });
+
+  it("goes back to the voters when a government falls", () => {
     const outcome = playCampaign({ seed: 4242, maxTurns: 300 });
     if (outcome.state.parliament > 1) {
       expect(outcome.state.log.some((entry) => entry.kind === "election")).toBe(true);

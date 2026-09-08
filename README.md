@@ -58,14 +58,19 @@ to actually form is worth more than the same seat in one that never will, so suc
 
 ### The two phases
 - **Forming** — one turn is a week. Bid until somebody's bloc reaches 61; they become prime
-  minister. If **twelve weeks** pass with no government, the Knesset dissolves itself and the
-  country votes again. Without that deadline the game can genuinely deadlock: portfolios stay
-  locked with the partners that bought them, so three well-funded players can each hold a third of
-  the board and none of them can afford the rest.
+  minister. A formateur gets **six weeks**: 28 days, plus the 14 the president usually grants. Fail
+  and the Knesset dissolves itself and the country votes again. That deadline is also what keeps
+  the game from deadlocking — portfolios stay locked with the partners that bought them, so without
+  it well-funded players can each hold part of the board with none able to afford the rest.
 - **Governing** — one turn is a year. The opposition bids to peel partners away, the prime minister
   defends, and each surviving year is banked. Drop below 61 and there is **one turn** to put it
   back together; fail and the government falls, the Knesset is re-elected around the real baseline,
   and the bidding starts over.
+
+**An election does not tear up your agreements.** A party that keeps its place in the new Knesset
+keeps whatever it was promised and whoever it was promised to; only the arithmetic underneath moves.
+A list that falls below the threshold leaves the chamber, and the portfolios it was holding go back
+to the player who paid them.
 
 Ten banked years, across as many governments as it takes, wins.
 
@@ -116,8 +121,9 @@ games, so a mismatch is refused rather than silently mangled.
 `scripts/balance.ts` plays every seed twice with the strategies swapped between the same two seats,
 because the parties are wildly unequal and a naive comparison would mostly measure who drew Likud.
 
-Currently: **greedy beats random 93%**, every campaign reaches a winner, a campaign runs a median of
-16 turns across about three parliaments, and forming a coalition takes a median of 3 weeks.
+Currently: **greedy beats random 79%**, every campaign reaches a winner, a campaign runs a median of
+16 turns across about three parliaments, and forming a coalition takes a median of 2 weeks — well
+inside the six-week limit, with head-to-head negotiations running to 9.
 
 Three findings from that probe are baked into the rules and the bot:
 
@@ -127,7 +133,9 @@ Three findings from that probe are baked into the rules and the bot:
 - **Acquisition has to outrank defence in the bot.** A two-billion top-up on a party you already
   hold looks wonderfully efficient beside buying anything, so a version that ranked the two
   together polished its coalition forever and never grew it — and lost to random.
-- **The twelve-week deadline exists because the game deadlocked without it.** Three greedy players
-  would stalemate for 200+ turns; with dissolution they settle inside 70, having gone back to the
-  voters once or twice on the way. Head to head, two competent players settle a negotiation in a
-  median of 13 weeks, so the deadline bites just often enough to matter.
+- **The deadline exists because the game deadlocked without it.** Three greedy players would
+  stalemate for 200+ turns; with dissolution they settle inside 70. The six-week figure comes from
+  Israeli practice rather than from tuning, and it happens to bite about as often as it should.
+- **Letting agreements survive an election cost greedy its dominance**, from 93% down to 79%,
+  because a lucky bloc assembled by accident now persists instead of being wiped. That is a better
+  game, not a worse one: the margin is still decisive and the recovery from a bad election is real.

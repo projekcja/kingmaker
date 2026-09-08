@@ -323,12 +323,31 @@ const checkWin = (state: GameState): void => {
 // Elections
 // ---------------------------------------------------------------------------
 
-/** Re-roll the Knesset around the real baseline and start bidding again. */
+/**
+ * Re-roll the Knesset around the real baseline and start bidding again.
+ *
+ * Coalition agreements are not torn up by an election. A party that keeps its
+ * place in the Knesset keeps whatever it was promised and whoever it was
+ * promised to — only the arithmetic changes underneath it. A list that falls
+ * below the threshold takes its seat out of the chamber, and the portfolios it
+ * was holding go back to the player who paid them.
+ */
 export const runElection = (state: GameState, rng: Rng): void => {
   const protectedKeys = new Set(state.players.map((player) => player.partyKey));
   const seats = rollSeats(rng, protectedKeys);
 
-  state.parties = buildParties(seats);
+  const before = state.parties;
+  const parties = buildParties(seats);
+  for (const [key, party] of Object.entries(parties)) {
+    const previous = before[key];
+    if (!previous) continue;
+    party.heldBy = previous.heldBy;
+    party.package = previous.package;
+    // Red lines outlive an election too; they lapse on their own timer.
+    party.refusals = previous.refusals;
+  }
+
+  state.parties = parties;
   state.primeMinister = null;
   state.governmentYears = 0;
   state.emergencyUntil = 0;

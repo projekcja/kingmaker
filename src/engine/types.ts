@@ -22,14 +22,18 @@ export const RULES_VERSION = 2;
 export const YEARS_TO_WIN = 10;
 
 /**
- * Weeks the Knesset gets to produce a government before it is dissolved.
+ * Weeks a formateur gets before the Knesset is dissolved.
  *
- * Without this a campaign can deadlock outright: portfolios stay locked with
- * the partners they bought, so three well-funded players can each hold a third
- * of the board and none of them can afford to take the rest. The country's
- * answer to that is another election, and so is this game's.
+ * The real thing: 28 days to form a government, and a further 14 if the
+ * president grants the extension, which they usually do. Six weeks in all.
+ *
+ * It also happens to be the rule that keeps the game from deadlocking.
+ * Portfolios stay locked with the partners that bought them, so without a
+ * deadline well-funded players can each hold part of the board with none of
+ * them able to afford the rest. The country's answer to that is another
+ * election, and so is this game's.
  */
-export const FORMING_DEADLINE = 12;
+export const FORMING_DEADLINE = 6;
 
 export type PlayerKind = "human" | "random" | "greedy";
 
