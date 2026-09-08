@@ -12,7 +12,7 @@
  *   km:game:<id>:action:<n>   one action, keyed by turn number
  */
 
-import type { Action } from "../engine/actions";
+import type { Action } from "../engine/campaign";
 import type { AppendResult, GameRecord, Transport } from "./transport";
 
 const RECORD_PREFIX = "km:game:";

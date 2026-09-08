@@ -12,27 +12,18 @@
  * can be swapped for a shared one without the game noticing.
  */
 
-import type { Action } from "../engine/actions";
-import type { Seats } from "../engine/types";
+import type { Action } from "../engine/campaign";
+import type { PlayerKind } from "../engine/types";
 
 export interface GameRecord {
   id: string;
   seed: number;
   /** The rules that produced this game; a mismatch makes the log unreplayable. */
   rulesVersion: number;
-  daysTotal: number;
-  partyCount: number;
-  totalSeats: number;
-  /**
-   * Party key -> player id, frozen once play begins.
-   *
-   * Seats decide whether a party answers offers itself, so changing them
-   * mid-game would change how the existing action log replays.
-   */
-  seats: Seats;
-  /** Player id -> display name, for the lobby and the waiting states. */
-  players: Record<string, string>;
-  status: "lobby" | "playing";
+  /** The party the human leads. Fixed for the life of the campaign. */
+  humanParty: string;
+  /** Bot opponents, in order of the parties they take. */
+  bots: PlayerKind[];
   createdAt: number;
 }
 
@@ -42,7 +33,6 @@ export type AppendResult = "ok" | "conflict";
 export interface Transport {
   createGame(record: GameRecord): Promise<void>;
   getGame(id: string): Promise<GameRecord | null>;
-  /** Lobby only: claim seats, add players, then start. */
   saveGame(record: GameRecord): Promise<void>;
   listGames(): Promise<GameRecord[]>;
   deleteGame(id: string): Promise<void>;
