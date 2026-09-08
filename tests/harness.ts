@@ -6,17 +6,17 @@
  * identical boards.
  */
 
-import { greedyAllocation, randomAllocation } from "../src/bots";
+import { greedyOffer, randomOffer } from "../src/bots";
 import { applyAction, newCampaign } from "../src/engine/campaign";
 import type { CampaignOptions } from "../src/engine/campaign";
 import { Rng } from "../src/engine/rng";
-import type { Allocation, GameState } from "../src/engine/types";
+import type { GameState, Offer } from "../src/engine/types";
 
-export type Strategy = (state: GameState, playerKey: string, rng: Rng) => Allocation;
+export type Strategy = (state: GameState, playerKey: string, rng: Rng) => Offer;
 
 export const STRATEGIES: Record<string, Strategy> = {
-  greedy: greedyAllocation,
-  random: randomAllocation,
+  greedy: greedyOffer,
+  random: randomOffer,
 };
 
 export interface CampaignOutcome {
@@ -41,7 +41,7 @@ export interface CampaignOutcome {
 export const playCampaign = (
   options: CampaignOptions & { strategy?: Strategy; maxTurns?: number } = {},
 ): CampaignOutcome => {
-  const { strategy = greedyAllocation, maxTurns = 400, ...campaignOptions } = options;
+  const { strategy = greedyOffer, maxTurns = 400, ...campaignOptions } = options;
   let state = newCampaign(campaignOptions);
   const rng = new Rng((state.seed ^ 0x5f3a) | 0);
 
@@ -62,8 +62,8 @@ export const playCampaign = (
     } else {
       currentRun = 0;
     }
-    const allocation = strategy(state, human.key, rng);
-    state = applyAction(state, { type: "commit", playerKey: human.key, allocation }).state;
+    const offer = strategy(state, human.key, rng);
+    state = applyAction(state, { type: "offer", playerKey: human.key, offer }).state;
   }
 
   return {

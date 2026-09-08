@@ -10,7 +10,7 @@
  * Run with: npx vite-node scripts/balance.ts
  */
 
-import { greedyAllocation, randomAllocation } from "../src/bots";
+import { greedyOffer, randomOffer } from "../src/bots";
 import { PARTY_PROFILES } from "../src/engine/parties";
 import { YEARS_TO_WIN } from "../src/engine/types";
 import { playCampaign } from "../tests/harness";
@@ -43,8 +43,8 @@ for (const seed of SEEDS) {
   // Arm A: greedy in the human seat, random as the bot.
   // Arm B: the same board with the strategies swapped.
   const arms = [
-    { strategy: greedyAllocation, bot: "random" as const, humanIsGreedy: true },
-    { strategy: randomAllocation, bot: "greedy" as const, humanIsGreedy: false },
+    { strategy: greedyOffer, bot: "random" as const, humanIsGreedy: true },
+    { strategy: randomOffer, bot: "greedy" as const, humanIsGreedy: false },
   ];
 
   for (const arm of arms) {
@@ -78,7 +78,7 @@ for (const seed of SEEDS.slice(0, 80)) {
     seed,
     humanParty: "likud",
     bots: ["greedy", "greedy"],
-    strategy: greedyAllocation,
+    strategy: greedyOffer,
     maxTurns: MAX_TURNS,
   });
   contested.push(outcome.longestFormation);

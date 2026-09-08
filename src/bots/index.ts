@@ -1,28 +1,28 @@
 /** Bot opponents, dispatched by the kind recorded on the player. */
 
 import type { Rng } from "../engine/rng";
-import type { Allocation, GameState } from "../engine/types";
-import { playerOf } from "../engine/types";
-import { greedyAllocation } from "./greedy";
-import { randomAllocation } from "./random";
+import type { GameState, Offer } from "../engine/types";
+import { emptyOffer, playerOf } from "../engine/types";
+import { greedyOffer } from "./greedy";
+import { randomOffer } from "./random";
 
-export { greedyAllocation } from "./greedy";
-export { randomAllocation } from "./random";
+export { greedyOffer } from "./greedy";
+export { randomOffer } from "./random";
 
 /**
- * Decide a bot's spread for this turn.
+ * Decide a bot's move for this turn.
  *
  * Called during resolution with the campaign's own RNG, so bot play is part of
  * the deterministic replay and never needs to be written to the action log.
  */
-export const allocateFor = (state: GameState, playerKey: string, rng: Rng): Allocation => {
+export const offerFor = (state: GameState, playerKey: string, rng: Rng): Offer => {
   const player = playerOf(state, playerKey);
   switch (player.kind) {
     case "greedy":
-      return greedyAllocation(state, playerKey, rng);
+      return greedyOffer(state, playerKey, rng);
     case "random":
-      return randomAllocation(state, playerKey, rng);
+      return randomOffer(state, playerKey, rng);
     case "human":
-      return {};
+      return emptyOffer();
   }
 };

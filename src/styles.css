@@ -178,3 +178,25 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 .card-who { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; }
 .card-title { font-weight: 650; margin-top: 3px; }
 .card-text { color: var(--dim); font-size: 12.5px; margin-top: 3px; }
+
+/* party cards now carry a price and a way out */
+.party-card { padding: 0; overflow: hidden; }
+.party-hit {
+  display: block; width: 100%; text-align: left; background: none;
+  border: none; border-radius: 0; padding: 10px 11px;
+}
+.party-card.active { background: #232a38; box-shadow: 0 0 0 2px var(--gold); }
+.party-card.pulling { opacity: 0.6; border-style: dashed; }
+.party-price { display: flex; gap: 8px; align-items: baseline; margin-top: 7px; }
+.party-price .current { font-size: 13px; font-weight: 650; color: #5b657a; }
+.party-price .pending { font-size: 13px; font-weight: 700; color: var(--gold); }
+.party-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.mini {
+  font-size: 10px; padding: 2px 6px; border-radius: 10px;
+  background: #2a2312; color: #edc474;
+}
+.pull {
+  display: block; width: 100%; border: none; border-top: 1px solid var(--line);
+  border-radius: 0; font-size: 11px; padding: 5px; color: var(--dim); background: #12151c;
+}
+.problem { color: var(--bad); font-size: 12.5px; }

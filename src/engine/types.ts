@@ -21,6 +21,16 @@ export const RULES_VERSION = 2;
 
 export const YEARS_TO_WIN = 10;
 
+/**
+ * Weeks the Knesset gets to produce a government before it is dissolved.
+ *
+ * Without this a campaign can deadlock outright: portfolios stay locked with
+ * the partners they bought, so three well-funded players can each hold a third
+ * of the board and none of them can afford to take the rest. The country's
+ * answer to that is another election, and so is this game's.
+ */
+export const FORMING_DEADLINE = 12;
+
 export type PlayerKind = "human" | "random" | "greedy";
 
 export interface Player {
@@ -43,6 +53,14 @@ export interface Party {
   /** The player whose bloc this party currently sits in, or null. */
   heldBy: string | null;
   /**
+   * Ministries handed over to keep this party, by whoever holds it.
+   *
+   * They stay spent for as long as the party stays: every partner you add
+   * leaves you less to buy the next one with. Losing the party, or pulling the
+   * ministries back, returns them to their owner's hand.
+   */
+  package: string[];
+  /**
    * Parties this one refuses to sit beside, with the turn the refusal lapses.
    *
    * Written by cards, which is how ideology reaches the board without the
@@ -51,8 +69,43 @@ export interface Party {
   refusals: Array<{ partyKey: string; until: number }>;
 }
 
-/** Which ministry each player is putting where. Ministry key -> party key. */
-export type Allocation = Record<string, string>;
+/**
+ * How many parties one player may court in a single turn.
+ *
+ * This is the dial that sets the pace of the whole game. Money is plentiful;
+ * turns are not, so a coalition has to be assembled a couple of partners at a
+ * time while rivals do the same.
+ */
+export const OFFERS_PER_TURN = 2;
+
+/** One party courted, and what is being put in front of it. */
+export interface Bid {
+  partyKey: string;
+  /** Ministries on the table, drawn from the player's free hand. */
+  ministries: string[];
+}
+
+/** One turn's move. */
+export interface Offer {
+  /** Up to {@link OFFERS_PER_TURN} parties courted this turn. */
+  bids: Bid[];
+  /**
+   * Parties abandoned this turn to free up the ministries locked with them.
+   *
+   * Withdrawing costs you the party but funds the offer, which is the only way
+   * to move a portfolio once it has been promised.
+   */
+  withdrawFrom: string[];
+}
+
+export const emptyOffer = (): Offer => ({ bids: [], withdrawFrom: [] });
+
+/** Every ministry this player is putting on a table this turn. */
+export const offeredMinistries = (offer: Offer): string[] =>
+  offer.bids.flatMap((bid) => bid.ministries);
+
+export const bidFor = (offer: Offer, partyKey: string): Bid | undefined =>
+  offer.bids.find((bid) => bid.partyKey === partyKey);
 
 export type Phase =
   /** Bidding for a majority. One turn is a week. */
@@ -112,8 +165,8 @@ export interface GameState {
   /** True when the government slipped below 61 and is on its repair turn. */
   repairing: boolean;
 
-  /** Sealed bids for the turn in progress, keyed by player. */
-  commitments: Record<string, Allocation>;
+  /** Sealed offers for the turn in progress, keyed by player. */
+  offers: Record<string, Offer>;
 
   log: LogEntry[];
   /** The most recent resolution, kept so the interface can show the reveal. */
@@ -157,16 +210,32 @@ export const blocSeats = (state: GameState, playerKey: string): number =>
 export const ministryByKey = (state: GameState, key: string): Ministry | undefined =>
   state.ministries.find((ministry) => ministry.key === key);
 
-/** Billions a player has committed to one party this turn. */
-export const bidValue = (
-  state: GameState,
-  allocation: Allocation,
-  partyKey: string,
-): number =>
-  state.ministries.reduce(
-    (sum, ministry) => (allocation[ministry.key] === partyKey ? sum + ministry.budget : sum),
-    0,
+/** What a set of ministries is worth, in billions. */
+export const valueOf = (state: GameState, ministries: readonly string[]): number =>
+  ministries.reduce((sum, key) => sum + (ministryByKey(state, key)?.budget ?? 0), 0);
+
+/** What the party is currently being paid to stay where it is. */
+export const packageValue = (state: GameState, partyKey: string): number =>
+  valueOf(state, state.parties[partyKey]?.package ?? []);
+
+/**
+ * The ministries a player still has to spend.
+ *
+ * Everything they own, minus whatever is locked with the parties they hold.
+ */
+export const freeMinistries = (state: GameState, playerKey: string): string[] => {
+  const locked = new Set(
+    Object.values(state.parties)
+      .filter((party) => party.heldBy === playerKey)
+      .flatMap((party) => party.package),
   );
+  return state.ministries
+    .filter((ministry) => !locked.has(ministry.key))
+    .map((ministry) => ministry.key);
+};
+
+export const freeBudget = (state: GameState, playerKey: string): number =>
+  valueOf(state, freeMinistries(state, playerKey));
 
 /**
  * Red lines standing between a party and a player's bloc.

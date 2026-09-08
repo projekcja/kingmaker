@@ -11,14 +11,22 @@
  * a whole campaign still replays exactly.
  */
 
-import { allocateFor } from "../bots";
-import { applyRound, resolveRound } from "./allocation";
+import { offerFor } from "../bots";
+import { applyRound, applyWithdrawals, resolveRound } from "./allocation";
 import { drawCard, expireRefusals } from "./deck";
 import { MINISTRIES } from "./ministries";
 import { ELECTORAL_THRESHOLD, MAJORITY, PARTY_PROFILES, TOTAL_SEATS } from "./parties";
 import { Rng } from "./rng";
-import type { Allocation, GameState, Party, PlayerKind, TurnResult } from "./types";
-import { YEARS_TO_WIN, blocSeats, isLedByPlayer, playerOf } from "./types";
+import type { GameState, Offer, Party, PlayerKind, TurnResult } from "./types";
+import {
+  FORMING_DEADLINE,
+  YEARS_TO_WIN,
+  blocSeats,
+  isLedByPlayer,
+  packageValue,
+  playerOf,
+  valueOf,
+} from "./types";
 
 export interface CampaignOptions {
   seed?: number;
@@ -53,6 +61,7 @@ const buildParties = (seats: Record<string, number>): Record<string, Party> => {
       bloc: profile.bloc,
       leftRight: profile.leftRight,
       heldBy: null,
+      package: [],
       refusals: [],
     };
   }
@@ -101,7 +110,7 @@ export const newCampaign = (options: CampaignOptions = {}): GameState => {
     governmentYears: 0,
     emergencyUntil: 0,
     repairing: false,
-    commitments: {},
+    offers: {},
     log: [],
     lastTurn: null,
     rngState: rng.state,
@@ -127,7 +136,7 @@ const ordinal = (value: number): string => {
 // Turns
 // ---------------------------------------------------------------------------
 
-export type Action = { type: "commit"; playerKey: string; allocation: Allocation };
+export type Action = { type: "offer"; playerKey: string; offer: Offer };
 
 export interface ActionResult {
   state: GameState;
@@ -140,13 +149,13 @@ export const humanPlayers = (state: GameState) =>
 
 /** Whether everyone who has to press a button has pressed it. */
 export const readyToResolve = (state: GameState): boolean =>
-  humanPlayers(state).every((player) => state.commitments[player.key] !== undefined);
+  humanPlayers(state).every((player) => state.offers[player.key] !== undefined);
 
 export const applyAction = (input: GameState, action: Action): ActionResult => {
   const state = cloneState(input);
   if (state.phase === "over") return { state, resolved: null };
 
-  state.commitments[action.playerKey] = action.allocation;
+  state.offers[action.playerKey] = action.offer;
   if (!readyToResolve(state)) return { state, resolved: null };
 
   const resolved = resolveTurn(state);
@@ -162,8 +171,23 @@ const resolveTurn = (state: GameState): TurnResult => {
   // Bots decide with the same seeded stream, so nothing has to be stored.
   for (const player of state.players) {
     if (player.kind === "human") continue;
-    state.commitments[player.key] = allocateFor(state, player.key, rng);
+    state.offers[player.key] = offerFor(state, player.key, rng);
   }
+
+  // Anyone walking away from a partner does so before the offers are opened,
+  // which is what lets those portfolios fund this turn's bid.
+  for (const [playerKey, offer] of Object.entries(state.offers)) {
+    for (const partyKey of offer.withdrawFrom) {
+      const party = state.parties[partyKey];
+      if (party?.heldBy !== playerKey) continue;
+      log(
+        state,
+        "trouble",
+        `${playerOf(state, playerKey).name} pulls out of the ${party.name}, reclaiming ${valueOf(state, party.package)}bn of portfolios.`,
+      );
+    }
+  }
+  applyWithdrawals(state);
 
   const parties = resolveRound(state);
   applyRound(state, parties);
@@ -172,10 +196,13 @@ const resolveTurn = (state: GameState): TurnResult => {
     if (result.newHolder && result.newHolder !== result.previousHolder) {
       const party = state.parties[result.partyKey];
       const winner = playerOf(state, result.newHolder);
+      const taken = result.previousHolder
+        ? ` away from ${playerOf(state, result.previousHolder).name}`
+        : "";
       log(
         state,
         "deal",
-        `${winner.name} takes the ${party.name} (${party.seats}) for ${result.bids[result.newHolder]}bn.`,
+        `${winner.name} takes the ${party.name} (${party.seats})${taken} for ${packageValue(state, party.key)}bn.`,
       );
     }
   }
@@ -199,7 +226,7 @@ const resolveTurn = (state: GameState): TurnResult => {
 
   const result: TurnResult = { turn: state.turn, parties, cards };
   state.lastTurn = result;
-  state.commitments = {};
+  state.offers = {};
   state.turn += 1;
   if (state.phase === "forming") state.week += 1;
   state.rngState = rng.state;
@@ -213,7 +240,23 @@ const advancePhase = (state: GameState, rng: Rng): void => {
       .filter((entry) => entry.seats >= MAJORITY)
       .sort((a, b) => b.seats - a.seats);
 
-    if (contenders.length > 0) {
+    if (contenders.length === 0) {
+      // Nobody can put 61 together. The Knesset dissolves itself and the
+      // voters get another go, which is the only thing that breaks a deadlock
+      // once every portfolio is locked up.
+      if (state.week >= FORMING_DEADLINE) {
+        log(
+          state,
+          "trouble",
+          `${FORMING_DEADLINE} weeks and no government. The Knesset dissolves itself.`,
+        );
+        runElection(state, rng);
+      }
+      checkWin(state);
+      return;
+    }
+
+    {
       const winner = contenders[0].player;
       state.primeMinister = winner.key;
       state.phase = "governing";
@@ -288,7 +331,9 @@ export const runElection = (state: GameState, rng: Rng): void => {
   state.emergencyUntil = 0;
   state.repairing = false;
   state.phase = "forming";
-  state.week = 1;
+  // The turn is still being wound up, and its last act is to advance the week,
+  // so the new Knesset starts counting from zero here to land on week one.
+  state.week = 0;
   state.parliament += 1;
 
   log(

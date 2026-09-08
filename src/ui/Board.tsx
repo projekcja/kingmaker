@@ -1,61 +1,107 @@
 import { useMemo, useState } from "react";
 
-import { validateAllocation } from "../engine/allocation";
-import { MAJORITY } from "../engine/parties";
-import { BLOC_LABEL } from "../engine/parties";
-import type { Allocation, GameState } from "../engine/types";
-import { biddableParties, blocSeats, playerOf, refusalsAgainst } from "../engine/types";
+import { availableMinistries, validateOffer } from "../engine/allocation";
+import { BLOC_LABEL, MAJORITY } from "../engine/parties";
+import type { GameState, Offer } from "../engine/types";
+import {
+  OFFERS_PER_TURN,
+  biddableParties,
+  blocSeats,
+  ministryByKey,
+  packageValue,
+  refusalsAgainst,
+  valueOf,
+} from "../engine/types";
 import { Chamber } from "./Chamber";
 import { BLOC_COLOUR, playerColour, playerName } from "./format";
 
 interface Props {
   state: GameState;
-  onCommit: (allocation: Allocation) => void;
+  onCommit: (offer: Offer) => void;
   busy?: boolean;
 }
 
 /**
  * The whole game on one screen.
  *
- * Pick a party, then tap ministries onto it. Everything must be placed before
- * the turn can be sent, which is the point: there is no holding back, only
- * choosing where not to spend.
+ * Pick up to two parties, drop portfolios on them, send it. What a party is
+ * already being paid is public, so poaching is an informed decision rather than
+ * a guess — the hidden part is only what your rivals are doing this turn.
  */
 export const Board = ({ state, onCommit, busy = false }: Props) => {
   const human = state.players.find((player) => player.kind === "human");
   const targets = biddableParties(state);
-  const [allocation, setAllocation] = useState<Allocation>({});
-  const [active, setActive] = useState<string | null>(targets[0]?.key ?? null);
+
+  const [bids, setBids] = useState<Record<string, string[]>>({});
+  const [withdrawFrom, setWithdrawFrom] = useState<string[]>([]);
+  const [active, setActive] = useState<string | null>(null);
+
+  const offer: Offer = useMemo(
+    () => ({
+      bids: Object.entries(bids)
+        .filter(([, ministries]) => ministries.length > 0)
+        .map(([partyKey, ministries]) => ({ partyKey, ministries })),
+      withdrawFrom,
+    }),
+    [bids, withdrawFrom],
+  );
 
   const problems = useMemo(
-    () => (human ? validateAllocation(state, human.key, allocation) : []),
-    [state, human, allocation],
+    () => (human ? validateOffer(state, human.key, offer) : []),
+    [state, human, offer],
   );
-  const placed = Object.keys(allocation).length;
-  const remaining = state.ministries.length - placed;
 
   if (!human) return null;
 
-  const assign = (ministryKey: string) => {
-    setAllocation((current) => {
-      const next = { ...current };
-      if (next[ministryKey]) delete next[ministryKey];
-      else if (active) next[ministryKey] = active;
+  const hand = availableMinistries(state, human.key, offer);
+  const assigned = new Set(Object.values(bids).flat());
+  const courting = offer.bids.length;
+
+  const toggleMinistry = (key: string) => {
+    setBids((current) => {
+      const next: Record<string, string[]> = {};
+      let removed = false;
+      for (const [partyKey, ministries] of Object.entries(current)) {
+        const kept = ministries.filter((entry) => entry !== key);
+        if (kept.length !== ministries.length) removed = true;
+        if (kept.length > 0) next[partyKey] = kept;
+      }
+      if (removed || !active) return next;
+      // Only two tables at a time.
+      if (!next[active] && Object.keys(next).length >= OFFERS_PER_TURN) return next;
+      next[active] = [...(next[active] ?? []), key];
       return next;
     });
   };
 
-  const clearParty = (partyKey: string) =>
-    setAllocation((current) =>
-      Object.fromEntries(Object.entries(current).filter(([, key]) => key !== partyKey)),
-    );
+  const toggleWithdraw = (partyKey: string) =>
+    setWithdrawFrom((current) => {
+      const next = current.includes(partyKey)
+        ? current.filter((key) => key !== partyKey)
+        : [...current, partyKey];
+      // Portfolios pulled back cannot still be sitting on a table.
+      setBids((currentBids) => {
+        const freed = new Set(state.parties[partyKey]?.package ?? []);
+        if (current.includes(partyKey)) {
+          const cleaned: Record<string, string[]> = {};
+          for (const [key, ministries] of Object.entries(currentBids)) {
+            const kept = ministries.filter((entry) => !freed.has(entry));
+            if (kept.length > 0) cleaned[key] = kept;
+          }
+          return cleaned;
+        }
+        return currentBids;
+      });
+      return next;
+    });
 
-  const spentOn = (partyKey: string) =>
-    state.ministries
-      .filter((ministry) => allocation[ministry.key] === partyKey)
-      .reduce((sum, ministry) => sum + ministry.budget, 0);
+  const reset = () => {
+    setBids({});
+    setWithdrawFrom([]);
+  };
 
-  const clock = state.phase === "forming" ? `Week ${state.week}` : `Year ${state.governmentYears + 1}`;
+  const clock =
+    state.phase === "forming" ? `Week ${state.week}` : `Year ${state.governmentYears + 1}`;
   const headline =
     state.phase === "forming"
       ? "Buy a majority"
@@ -69,8 +115,7 @@ export const Board = ({ state, onCommit, busy = false }: Props) => {
         <div className="hud-left">
           <div className="phase">{headline}</div>
           <div className="clock">
-            {clock} · {state.parliament}
-            {state.parliament === 1 ? "st" : state.parliament === 2 ? "nd" : state.parliament === 3 ? "rd" : "th"} Knesset
+            {clock} · {state.parliament} Knesset
           </div>
         </div>
         <div className="scores">
@@ -97,36 +142,61 @@ export const Board = ({ state, onCommit, busy = false }: Props) => {
 
       <div className="parties">
         {targets.map((party) => {
-          const spent = spentOn(party.key);
+          const mine = party.heldBy === human.key;
+          const pulling = withdrawFrom.includes(party.key);
+          const pending = bids[party.key] ?? [];
+          const pendingValue = valueOf(state, pending);
+          const current = pulling ? 0 : packageValue(state, party.key);
           const blocked = refusalsAgainst(state, party, human.key);
-          const holder = party.heldBy;
+
           return (
-            <button
+            <div
               key={party.key}
-              className={`party-card ${active === party.key ? "active" : ""} ${blocked.length ? "blocked" : ""}`}
-              style={{ borderColor: holder ? playerColour(state, holder) : "#2a3140" }}
-              onClick={() => setActive(party.key)}
-              onDoubleClick={() => clearParty(party.key)}
+              className={`party-card ${active === party.key ? "active" : ""} ${blocked.length ? "blocked" : ""} ${pulling ? "pulling" : ""}`}
+              style={{ borderColor: party.heldBy ? playerColour(state, party.heldBy) : "#2a3140" }}
             >
-              <div className="party-head">
-                <span className="party-seats">{party.seats}</span>
-                <span className="party-name">{party.name}</span>
-              </div>
-              <div className="party-sub">
-                <span className="bloc" style={{ color: BLOC_COLOUR[party.bloc] }}>
-                  {BLOC_LABEL[party.bloc]}
-                </span>
-                <span className="holder" style={{ color: playerColour(state, holder) }}>
-                  {holder ? playerName(state, holder) : "unaligned"}
-                </span>
-              </div>
-              {blocked.length > 0 && (
-                <div className="redline">
-                  refuses you over {blocked.map((key) => state.parties[key]?.name).join(", ")}
+              <button className="party-hit" onClick={() => setActive(party.key)}>
+                <div className="party-head">
+                  <span className="party-seats">{party.seats}</span>
+                  <span className="party-name">{party.name}</span>
                 </div>
+                <div className="party-sub">
+                  <span className="bloc" style={{ color: BLOC_COLOUR[party.bloc] }}>
+                    {BLOC_LABEL[party.bloc]}
+                  </span>
+                  <span className="holder" style={{ color: playerColour(state, party.heldBy) }}>
+                    {party.heldBy ? playerName(state, party.heldBy) : "unaligned"}
+                  </span>
+                </div>
+
+                {blocked.length > 0 && (
+                  <div className="redline">
+                    refuses you over {blocked.map((key) => state.parties[key]?.name).join(", ")}
+                  </div>
+                )}
+
+                <div className="party-price">
+                  <span className="current">{current > 0 ? `holding ${current}bn` : "no offer"}</span>
+                  {pendingValue > 0 && <span className="pending">+{pendingValue}bn</span>}
+                </div>
+
+                {pending.length > 0 && (
+                  <div className="party-chips">
+                    {pending.map((key) => (
+                      <span key={key} className="mini">
+                        {ministryByKey(state, key)?.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </button>
+
+              {mine && (
+                <button className="pull" onClick={() => toggleWithdraw(party.key)}>
+                  {pulling ? "keep them" : "pull out"}
+                </button>
               )}
-              <div className={`bid ${spent > 0 ? "on" : ""}`}>{spent > 0 ? `${spent}bn` : "—"}</div>
-            </button>
+            </div>
           );
         })}
       </div>
@@ -134,54 +204,54 @@ export const Board = ({ state, onCommit, busy = false }: Props) => {
       <div className="tray">
         <div className="tray-head">
           <span>
-            {active ? `Offering to ${state.parties[active]?.name}` : "Pick a party"}
+            {active
+              ? `Offering to ${state.parties[active]?.name}`
+              : "Pick a party, then tap portfolios"}
           </span>
-          <span className={remaining > 0 ? "warn" : "ok"}>
-            {remaining > 0 ? `${remaining} left to place` : "all placed"}
+          <span className={courting > OFFERS_PER_TURN ? "warn" : "ok"}>
+            {courting} of {OFFERS_PER_TURN} tables · {valueOf(state, hand.filter((k) => !assigned.has(k)))}bn in hand
           </span>
         </div>
+
         <div className="chips">
-          {state.ministries.map((ministry) => {
-            const target = allocation[ministry.key];
+          {hand.map((key) => {
+            const ministry = ministryByKey(state, key);
+            if (!ministry) return null;
+            const used = assigned.has(key);
             return (
               <button
-                key={ministry.key}
-                className={`chip ${target ? "used" : ""}`}
-                style={
-                  target ? { borderColor: playerColour(state, human.key), opacity: 0.55 } : undefined
-                }
-                onClick={() => assign(ministry.key)}
-                title={target ? `→ ${state.parties[target]?.name}` : "unplaced"}
+                key={key}
+                className={`chip ${used ? "used" : ""}`}
+                onClick={() => toggleMinistry(key)}
               >
                 <span className="chip-budget">{ministry.budget}</span>
                 <span className="chip-name">{ministry.name}</span>
               </button>
             );
           })}
+          {hand.length === 0 && (
+            <span className="muted">
+              Everything you have is promised. Pull out of a partner to free a portfolio.
+            </span>
+          )}
         </div>
 
         <div className="commit-row">
-          <button
-            className="commit"
-            disabled={problems.length > 0 || busy}
-            onClick={() => {
-              onCommit(allocation);
-              setAllocation({});
-            }}
-          >
+          <button className="commit" disabled={problems.length > 0 || busy} onClick={() => {
+            onCommit(offer);
+            reset();
+          }}>
             {busy ? "Resolving…" : state.phase === "forming" ? "End the week" : "End the year"}
           </button>
-          <button className="ghost" onClick={() => setAllocation({})}>
+          <button className="ghost" onClick={reset}>
             Clear
           </button>
           <span className="need">
             {Math.max(0, MAJORITY - blocSeats(state, human.key))} more mandates for a majority
           </span>
+          {problems.length > 0 && <span className="problem">{problems[0].message}</span>}
         </div>
       </div>
     </div>
   );
 };
-
-export const pmName = (state: GameState): string | null =>
-  state.primeMinister ? playerOf(state, state.primeMinister).name : null;

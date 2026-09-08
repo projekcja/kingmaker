@@ -1,7 +1,7 @@
 import { renderToString } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
-import { greedyAllocation } from "../src/bots";
+import { greedyOffer } from "../src/bots";
 import { applyAction, newCampaign } from "../src/engine/campaign";
 import { Rng } from "../src/engine/rng";
 import type { GameState } from "../src/engine/types";
@@ -27,9 +27,9 @@ const playTurns = (state: GameState, count: number): GameState => {
   const rng = new Rng(7);
   for (let turn = 0; turn < count && next.phase !== "over"; turn += 1) {
     next = applyAction(next, {
-      type: "commit",
+      type: "offer",
       playerKey: "you",
-      allocation: greedyAllocation(next, "you", rng),
+      offer: greedyOffer(next, "you", rng),
     }).state;
   }
   return next;
@@ -56,15 +56,16 @@ describe("board", () => {
     for (const party of biddableParties(state)) {
       expect(html).toContain(escapeHtml(party.name));
     }
-    expect(html).toContain("left to place");
+    expect(html).toContain("in hand");
   });
 
-  it("shows all eighteen ministries as chips", () => {
+  it("shows every portfolio still in hand as a chip", () => {
     const state = newCampaign({ seed: 101 });
     const html = renderToString(<Board state={state} onCommit={noop} />);
     for (const ministry of state.ministries) {
       expect(html).toContain(escapeHtml(ministry.name));
     }
+    expect(html).toContain("tables");
   });
 
   it("switches its language once a government is sitting", () => {
@@ -101,9 +102,9 @@ describe("reveal", () => {
   it("shows the bids, the winner, and the cards drawn", () => {
     const state = newCampaign({ seed: 104, humanParty: "likud" });
     const next = applyAction(state, {
-      type: "commit",
+      type: "offer",
       playerKey: "you",
-      allocation: greedyAllocation(state, "you", new Rng(3)),
+      offer: greedyOffer(state, "you", new Rng(3)),
     }).state;
 
     const result = next.lastTurn;

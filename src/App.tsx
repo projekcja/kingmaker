@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { RULES_VERSION } from "./engine/types";
-import type { Allocation, PlayerKind, TurnResult } from "./engine/types";
+import type { Offer, PlayerKind, TurnResult } from "./engine/types";
 import { newGameId } from "./net/transport";
 import { transport, useGame } from "./net/useGame";
 import { Board } from "./ui/Board";
@@ -47,15 +47,7 @@ export const App = () => {
     [navigate],
   );
 
-  const commit = useCallback(
-    async (allocation: Allocation) => {
-      const before = game.state?.turn;
-      await game.commit(allocation);
-      // The reveal is read off the replayed state on the next render.
-      void before;
-    },
-    [game],
-  );
+  const commit = useCallback(async (offer: Offer) => game.commit(offer), [game]);
 
   // Show each resolution once, as it arrives.
   useEffect(() => {

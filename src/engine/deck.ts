@@ -38,6 +38,17 @@ const SPLINTER_NAMES = [
 const unaligned = (state: GameState): Party[] =>
   biddableParties(state).filter((party) => party.heldBy === null);
 
+/**
+ * Send a party back to the market.
+ *
+ * The portfolios it was holding return to whoever paid them, which matters now
+ * that a package stays spent for as long as the party stays bought.
+ */
+const release = (party: Party): void => {
+  party.heldBy = null;
+  party.package = [];
+};
+
 const opposedBloc = (bloc: Bloc): Bloc[] => {
   switch (bloc) {
     case "right":
@@ -87,7 +98,10 @@ export const CARDS: Card[] = [
       const doomed = rng.pick(state.ministries.filter((ministry) => ministry.budget <= 10));
       if (!doomed) return null;
       state.ministries = state.ministries.filter((ministry) => ministry.key !== doomed.key);
-      return `${doomed.name} is folded into another office. Everyone loses that chip.`;
+      for (const party of Object.values(state.parties)) {
+        party.package = party.package.filter((key) => key !== doomed.key);
+      }
+      return `${doomed.name} is folded into another office. Everyone loses that chip, including the coalitions already built on it.`;
     },
   },
   {
@@ -116,7 +130,7 @@ export const CARDS: Card[] = [
       const partners = partnersOf(state);
       if (partners.length === 0) return null;
       const leaving = rng.pick(partners);
-      leaving.heldBy = null;
+      release(leaving);
       return `The ${leaving.name} walks out of the coalition over a cabinet row. ${leaving.seats} mandates gone.`;
     },
   },
@@ -129,8 +143,8 @@ export const CARDS: Card[] = [
       const partners = partnersOf(state);
       if (partners.length < 2) return null;
       const [first, second] = rng.sample(partners, 2);
-      first.heldBy = null;
-      second.heldBy = null;
+      release(first);
+      release(second);
       return `The budget fails its second reading. The ${first.name} and the ${second.name} both leave the government.`;
     },
   },
@@ -167,7 +181,7 @@ export const CARDS: Card[] = [
       const partners = partnersOf(state);
       if (partners.length === 0) return null;
       const accused = rng.pick(partners);
-      accused.heldBy = null;
+      release(accused);
       return `A corruption probe reaches the ${accused.name}. They resign from the coalition rather than answer for it.`;
     },
   },
@@ -196,7 +210,7 @@ export const CARDS: Card[] = [
       const held = biddableParties(state).filter((party) => party.heldBy);
       if (held.length === 0) return null;
       const party = rng.pick(held);
-      party.heldBy = null;
+      release(party);
       return `A recording surfaces. The ${party.name} suspends its agreement and returns to the market.`;
     },
   },
@@ -233,7 +247,10 @@ export const CARDS: Card[] = [
       );
       if (!name) return null;
 
-      const key = `${party.key}-split-${state.turn}`;
+      // Keyed by the breakaway's own name, which is drawn from the names not
+      // already in use. Keying by turn collided when two lists split at once,
+      // and the second splinter overwrote the first.
+      const key = `split-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
       // The breakaway sits further out than the list it left.
       const drift = party.leftRight >= 0 ? 2 : -2;
       state.parties[key] = {
@@ -243,6 +260,7 @@ export const CARDS: Card[] = [
         bloc: party.bloc,
         leftRight: Math.max(-10, Math.min(10, party.leftRight + drift)),
         heldBy: null,
+        package: [],
         refusals: [],
       };
       return `The ${party.name} splits. ${name} breaks away with ${breakaway} mandates, and sits further ${drift > 0 ? "right" : "left"} than the list it left.`;

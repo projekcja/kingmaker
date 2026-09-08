@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { isValidAllocation } from "../engine/allocation";
+import { validateOffer } from "../engine/allocation";
 import type { Action } from "../engine/campaign";
-import type { Allocation, GameState } from "../engine/types";
+import type { GameState, Offer } from "../engine/types";
 import { LocalTransport } from "./localTransport";
 import { ReplayError, replay } from "./replay";
 import type { GameRecord, Transport } from "./transport";
@@ -18,8 +18,8 @@ export interface Game {
   state: GameState | null;
   error: string | null;
   loading: boolean;
-  /** Commit a spread of ministries and let the turn resolve. */
-  commit: (allocation: Allocation) => Promise<void>;
+  /** Seal this turn’s offers and let the turn resolve. */
+  commit: (offer: Offer) => Promise<void>;
   reload: () => Promise<void>;
 }
 
@@ -66,22 +66,23 @@ export const useGame = (id: string | null): Game => {
   }, [record, actions]);
 
   const commit = useCallback(
-    async (allocation: Allocation) => {
+    async (offer: Offer) => {
       if (!id || !replayed.state) return;
       const state = replayed.state;
       const human = state.players.find((player) => player.kind === "human");
       if (!human) return;
 
-      if (!isValidAllocation(state, human.key, allocation)) {
-        setError("Every ministry has to be offered to somebody.");
+      const problems = validateOffer(state, human.key, offer);
+      if (problems.length > 0) {
+        setError(problems[0].message);
         return;
       }
       setError(null);
 
       const result = await transport.appendAction(id, actions.length, {
-        type: "commit",
+        type: "offer",
         playerKey: human.key,
-        allocation,
+        offer,
       });
       if (result === "conflict") setError("That turn was already played. Catching up…");
       await reload();

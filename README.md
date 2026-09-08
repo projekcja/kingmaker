@@ -34,29 +34,35 @@ parties players lead are never for sale.
 Every player holds their own eighteen ministries, worth 1–18bn — 171bn each, every turn.
 
 ### The bidding
-1. Every player spreads **all** their ministries across the parties they want.
-2. Everyone commits at once; the offers are sealed.
-3. Each party takes the **highest total** offered to it.
+Each turn you may sit down with **two parties**, and put as many portfolios in front of each as you
+like. Everyone commits at once; the offers are sealed. Each party then takes the **best offer on
+its table**, weighed against what it is already being paid.
 
-There is no reserve price: competition *is* the price, and the constraint is that a ministry spent
-on one party is a ministry not spent on another.
+Ministries handed over stay **locked with that party for as long as it stays bought**, so every
+partner you add leaves you less to buy the next one with. Getting from 55 seats to 61 is the hard
+part. The only way to move a portfolio once promised is to **pull out** of the party holding it,
+which costs you the party.
 
-Ties break twice over. An incumbent defends — it only has to match a challenger, not beat one.
-Where nobody holds the party, a tie goes to the bidder with **more mandates already behind them**:
-a seat in the government most likely to actually form is worth more than the same seat in one that
-never will, so success bandwagons.
+An offer that loses costs nothing — you only pay on success.
 
-Allocations are made afresh every turn, so **nothing is ever permanently bought**. Holding a bloc
-means continuing to outbid for it — which is exactly how an opposition attacks a sitting
-government.
+Money is plentiful; **turns are the scarce resource**. That single restriction is what makes this a
+negotiation rather than one decisive auction.
+
+Ties break twice over. An incumbent defends — it only has to match a challenger, not beat one, and
+a holder's top-up stacks on the package it has already paid. Where nobody holds the party, a tie
+goes to the bidder with **more mandates already behind them**: a seat in the government most likely
+to actually form is worth more than the same seat in one that never will, so success bandwagons.
 
 ### The two phases
-- **Forming** — one turn is a week. Bid until somebody's bloc reaches 61. They become prime
-  minister.
-- **Governing** — one turn is a year. The opposition bids to peel partners away, the prime
-  minister defends, and each surviving year is banked. Drop below 61 and there is **one turn** to
-  put it back together; fail and the government falls, the Knesset is re-elected around the real
-  baseline, and the bidding starts over.
+- **Forming** — one turn is a week. Bid until somebody's bloc reaches 61; they become prime
+  minister. If **twelve weeks** pass with no government, the Knesset dissolves itself and the
+  country votes again. Without that deadline the game can genuinely deadlock: portfolios stay
+  locked with the partners that bought them, so three well-funded players can each hold a third of
+  the board and none of them can afford the rest.
+- **Governing** — one turn is a year. The opposition bids to peel partners away, the prime minister
+  defends, and each surviving year is banked. Drop below 61 and there is **one turn** to put it
+  back together; fail and the government falls, the Knesset is re-elected around the real baseline,
+  and the bidding starts over.
 
 Ten banked years, across as many governments as it takes, wins.
 
@@ -77,7 +83,7 @@ politics and asserts no bidding outcome changes.
 src/engine/     the rules, with no reference to the DOM
   parties.ts      the real Knesset, with bloc tags
   ministries.ts   the eighteen portfolios and their budgets
-  allocation.ts   sealed bids, resolution, tie-breaking
+  allocation.ts   sealed offers, resolution, tie-breaking, withdrawal
   deck.ts         the card stack — the only consumer of ideology
   campaign.ts     setup, the turn machine, elections, the win check
   rng.ts          seeded PRNG; the cursor lives in the game state
@@ -107,10 +113,17 @@ games, so a mismatch is refused rather than silently mangled.
 `scripts/balance.ts` plays every seed twice with the strategies swapped between the same two seats,
 because the parties are wildly unequal and a naive comparison would mostly measure who drew Likud.
 
-Currently: **greedy wins 95% against random**, every campaign reaches a winner, a campaign runs a
-median of 12 turns across about 2.5 parliaments.
+Currently: **greedy beats random 93%**, every campaign reaches a winner, a campaign runs a median of
+16 turns across about three parliaments, and forming a coalition takes a median of 3 weeks.
 
-One number is not where it should be. Forming a coalition takes a median of **one turn**, even with
-three greedy players — eighteen chips against seven purchasable parties is not scarce enough to
-make the negotiation a contest, so the campaign is mostly its governing phase. See the note in the
-plan file; the fix is a rules decision, not a tuning one.
+Three findings from that probe are baked into the rules and the bot:
+
+- **One offer a turn was the fix for pacing.** Under an earlier rule where players spread all
+  eighteen portfolios across the whole board every turn, coalitions formed in a single turn even
+  between competent players, and the campaign was just its governing phase.
+- **Acquisition has to outrank defence in the bot.** A two-billion top-up on a party you already
+  hold looks wonderfully efficient beside buying anything, so a version that ranked the two
+  together polished its coalition forever and never grew it — and lost to random.
+- **The twelve-week deadline exists because the game deadlocked without it.** Three greedy players
+  would stalemate for 200+ turns; with dissolution they settle inside 70, having gone back to the
+  voters once or twice on the way.
