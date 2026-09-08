@@ -74,7 +74,10 @@ const baselineSeats = (): Record<string, number> =>
 export const newCampaign = (options: CampaignOptions = {}): GameState => {
   const seed = options.seed ?? Math.floor(Math.random() * 2 ** 31);
   const rng = new Rng(seed);
-  const botKinds = options.bots ?? ["random", "greedy"];
+  // Two players by default: one rival, and the rest of the Knesset for sale.
+  // More players means more parties off the market, and the pool shrinks faster
+  // than the number of contenders grows.
+  const botKinds = options.bots ?? ["greedy"];
 
   const ranked = [...PARTY_PROFILES].sort((a, b) => b.baseSeats - a.baseSeats);
   const humanParty = options.humanParty ?? ranked[0].key;

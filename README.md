@@ -27,9 +27,12 @@ npx vite-node scripts/balance.ts   # does the game reward skill?
 
 ### The board
 The real 25th Knesset: Likud 32, Yesh Atid 24, Religious Zionism 14, National Unity 12, Shas 11,
-UTJ 7, Yisrael Beiteinu 6, Ra'am 5, Hadash-Ta'al 5, Labor 4. You pick which one to lead; the bots
-take the largest you left. Your own party's mandates always count toward your bloc, and the
-parties players lead are never for sale.
+UTJ 7, Yisrael Beiteinu 6, Ra'am 5, Hadash-Ta'al 5, Labor 4. You pick which one to lead; rivals
+take the largest you left. Your own party's mandates always count toward your bloc.
+
+**Two players by default** — you and one rival. A party somebody leads is never for sale, so each
+extra rival takes seats off the market faster than it adds a contender: with two players there are
+64 mandates to buy, with three only 50, and by four the smaller seats cannot reach 61 at all.
 
 Every player holds their own eighteen ministries, worth 1–18bn — 171bn each, every turn.
 
@@ -126,4 +129,5 @@ Three findings from that probe are baked into the rules and the bot:
   together polished its coalition forever and never grew it — and lost to random.
 - **The twelve-week deadline exists because the game deadlocked without it.** Three greedy players
   would stalemate for 200+ turns; with dissolution they settle inside 70, having gone back to the
-  voters once or twice on the way.
+  voters once or twice on the way. Head to head, two competent players settle a negotiation in a
+  median of 13 weeks, so the deadline bites just often enough to matter.

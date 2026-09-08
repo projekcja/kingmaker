@@ -10,11 +10,10 @@ interface Props {
   onStart: (options: { humanParty: string; bots: PlayerKind[]; seed?: number }) => void;
 }
 
-const BOT_SETS: Array<{ label: string; bots: PlayerKind[] }> = [
-  { label: "Random + Greedy", bots: ["random", "greedy"] },
-  { label: "Greedy only", bots: ["greedy"] },
-  { label: "Two Greedy", bots: ["greedy", "greedy"] },
-  { label: "Random only", bots: ["random"] },
+const BOT_SETS: Array<{ label: string; bots: PlayerKind[]; note: string }> = [
+  { label: "One rival", bots: ["greedy"], note: "a rival who plays to win" },
+  { label: "One weak rival", bots: ["random"], note: "a rival with no plan at all" },
+  { label: "Two rivals", bots: ["greedy", "random"], note: "crowded — three parties come off the market" },
 ];
 
 export const Setup = ({ onStart }: Props) => {
@@ -65,8 +64,9 @@ export const Setup = ({ onStart }: Props) => {
           ))}
         </div>
         <p className="hint">
-          Bots take the largest parties you left behind. Greedy buys the smallest set that
-          reaches 61 and defends it; random just scatters.
+          {BOT_SETS[botSet].note}. Rivals take the largest parties you left behind, and a party
+          somebody leads is never for sale — so every extra rival takes seats off the market faster
+          than it adds a contender.
         </p>
       </div>
 

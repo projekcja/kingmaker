@@ -35,8 +35,8 @@ const yearsPerGovernment: number[] = [];
 const formingTurns: number[] = [];
 const longestFormation: number[] = [];
 
-// A separate, symmetrical arm: two competent players fighting over the same
-// board, which is the only way to see how long forming a coalition really takes.
+// A separate arm with a competent player on both sides of the table, which is
+// the only way to see how long forming a coalition really takes.
 const contested: number[] = [];
 
 for (const seed of SEEDS) {
@@ -77,7 +77,7 @@ for (const seed of SEEDS.slice(0, 80)) {
   const outcome = playCampaign({
     seed,
     humanParty: "likud",
-    bots: ["greedy", "greedy"],
+    bots: ["greedy"],
     strategy: greedyOffer,
     maxTurns: MAX_TURNS,
   });
