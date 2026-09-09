@@ -400,11 +400,6 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
           })}
         </div>
 
-        {/* The whole map of who refuses whom, under the cards rather than
-            beside them: it is read before a turn and then not again, so it
-            sits after the thing it is advice about. */}
-        <RedLines state={state} seat={human.key} />
-
         <div className="tray">
           {/* The government's one act of the year, above the diary because it
               is the only thing on this screen that is not an auction. */}
@@ -555,6 +550,18 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
             )}
           </div>
         </div>
+
+        {/*
+         * The whole map of who refuses whom, at the very bottom of the column.
+         *
+         * It went between the party cards and the tray first, which put the
+         * two halves of a single move — pick a party, then tap portfolios at
+         * it — a scroll apart. Those two have to stay adjacent: the turn is
+         * played by going back and forth between them a dozen times. The map
+         * is read once before a turn and then not again, so it is the one
+         * thing here that can afford to be below the fold.
+         */}
+        <RedLines state={state} seat={human.key} />
         </div>
 
         <Dispatch state={state} onOpen={(kind) => onOpenReport?.(kind)} />
