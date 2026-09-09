@@ -1,3 +1,13 @@
+/**
+ * The trophy case: the two views of the achievements.
+ *
+ * Named for the case rather than for its contents, because `achievements.ts`
+ * next door holds the achievements themselves and two modules whose names
+ * differ only in case are indistinguishable on a case-insensitive filesystem —
+ * which is most of them. TypeScript resolves `./Achievements` to whichever it
+ * loaded first there and then reports the exports of the wrong one.
+ */
+
 import type { Achievement } from "./achievements";
 import { ACHIEVEMENTS } from "./achievements";
 

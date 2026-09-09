@@ -5,7 +5,7 @@ import { partyHistory } from "../engine/history";
 import { BLOC_LABEL, CHAMBERS, DEFAULT_CHAMBER, chamberById } from "../engine/parties";
 import type { PlayerKind } from "../engine/types";
 import { YEARS_TO_WIN } from "../engine/types";
-import { AchievementStrip } from "./Achievements";
+import { AchievementStrip } from "./Trophies";
 import { BlocChamber } from "./BlocChamber";
 import { Emblem } from "./Emblem";
 import { BLOC_COLOUR } from "./format";

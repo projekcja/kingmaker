@@ -7,7 +7,7 @@ import { newGameId } from "./net/transport";
 import { transport, useGame } from "./net/useGame";
 import type { Achievement } from "./ui/achievements";
 import { achievementByKey, loadUnlocked, saveUnlocked, unlockedBy } from "./ui/achievements";
-import { AchievementStrip, AchievementToast } from "./ui/Achievements";
+import { AchievementStrip, AchievementToast } from "./ui/Trophies";
 import { Board } from "./ui/Board";
 import { ElectionReport } from "./ui/ElectionReport";
 import { History } from "./ui/History";
