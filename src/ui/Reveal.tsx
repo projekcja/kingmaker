@@ -80,6 +80,10 @@ export const Reveal = ({ state, result, onClose }: Props) => {
           <h2>The offers are opened</h2>
         </div>
 
+        {/* Everything that reads back the turn scrolls in its own box, so the
+            way out of the panel is never a scroll away — a sealed reveal can
+            run to several screens once three tables were all contested. */}
+        <div className="reveal-body">
         {nothingHappened && (
           <p className="muted">Nobody bid for anything. A wasted turn all round.</p>
         )}
@@ -187,10 +191,13 @@ export const Reveal = ({ state, result, onClose }: Props) => {
             ))}
           </div>
         )}
+        </div>
 
-        <button className="commit" onClick={onClose}>
-          Carry on
-        </button>
+        <div className="reveal-footer">
+          <button className="commit" onClick={onClose}>
+            Carry on
+          </button>
+        </div>
       </div>
     </div>
   );

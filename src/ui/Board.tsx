@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 
 import { availableMinistries, validateOffer } from "../engine/allocation";
@@ -58,6 +58,18 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
   // The bill pencilled in for this year. Null is "pass nothing", which is a
   // choice rather than the absence of one, and it is also the default.
   const [law, setLaw] = useState<string | null>(null);
+  const trayRef = useRef<HTMLDivElement | null>(null);
+
+  // Picking a party is the start of a table, and the table — chips and the
+  // commit row both — is what the player needs to see next, not just its
+  // top edge. "end" only pulls the page when the tray is not already
+  // fully on screen, so a tray already visible does not jump.
+  const selectParty = (key: string) => {
+    setActive(key);
+    requestAnimationFrame(() => {
+      trayRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+  };
 
   const offer: Offer = useMemo(
     () => ({
@@ -317,15 +329,15 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
                   </span>
                 )}
                 <button
-                className="party-hit"
-                aria-pressed={active === party.key}
-                onClick={() => setActive(party.key)}
-                title={
-                  diaryFull && pending.length === 0
-                    ? `No meetings left this ${forming ? "week" : "year"} — cancel one to court ${party.name}`
-                    : undefined
-                }
-              >
+                  className="party-hit"
+                  aria-pressed={active === party.key}
+                  onClick={() => selectParty(party.key)}
+                  title={
+                    diaryFull && pending.length === 0
+                      ? `No meetings left this ${forming ? "week" : "year"} — cancel one to court ${party.name}`
+                      : undefined
+                  }
+                >
                   <div className="party-head">
                     <span className="party-seats">{party.seats}</span>
                     <span className="party-name">{party.name}</span>
@@ -351,7 +363,19 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
 
                   {blocked.length > 0 && (
                     <div className="redline">
-                      refuses you over {blocked.map((key) => state.parties[key]?.name).join(", ")}
+                      refuses you over{" "}
+                      {blocked
+                        .map((key) => {
+                          const name = state.parties[key]?.name;
+                          // The line itself lapses on a turn already sitting in
+                          // state; showing it is a read, not new bookkeeping.
+                          const left = party.refusals.find((r) => r.partyKey === key)?.until;
+                          const turns = left !== undefined ? left - state.turn : undefined;
+                          return turns && turns > 0
+                            ? `${name} (${turns} more turn${turns === 1 ? "" : "s"})`
+                            : name;
+                        })
+                        .join(", ")}
                     </div>
                   )}
 
@@ -400,7 +424,7 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
           })}
         </div>
 
-        <div className="tray">
+        <div className="tray" ref={trayRef}>
           {/* The government's one act of the year, above the diary because it
               is the only thing on this screen that is not an auction. */}
           <Bill state={state} chosen={law} onChoose={setLaw} yours={inPower} />
