@@ -135,10 +135,32 @@ const listOf = (parties: Party[]): string => {
  */
 const rewritePackages = (state: GameState, from: string[], to: string | null): void => {
   const gone = new Set(from);
-  for (const party of Object.values(state.parties)) {
+  const touched = Object.values(state.parties).filter((party) =>
+    party.package.some((key) => gone.has(key)),
+  );
+
+  /*
+   * A merger maps two keys onto one, and that is where a portfolio can end up
+   * promised twice.
+   *
+   * Abolition is safe: it maps to nothing, and a portfolio that was in one
+   * package is now in none. But if a player has paid one partner with Tourism
+   * and another with Science, and the two are merged, then redirecting both
+   * packages puts the single merged office inside both of them — the same
+   * portfolio holding up two parties at once, which is the one thing the whole
+   * budget is built to prevent, and worth a great deal more than it cost.
+   *
+   * There is one merged ministry, so one package gets it: whichever held the
+   * senior half, `from[0]` by construction at both call sites. Everyone else
+   * loses the portfolio outright and is left on a thinner deal, which is the
+   * ordinary risk of voting for a cabinet law.
+   */
+  const senior =
+    touched.find((party) => party.package.includes(from[0])) ?? touched[0] ?? null;
+
+  for (const party of touched) {
     const kept = party.package.filter((key) => !gone.has(key));
-    if (kept.length === party.package.length) continue;
-    if (to && !kept.includes(to)) kept.push(to);
+    if (to && party === senior && !kept.includes(to)) kept.push(to);
     party.package = kept;
   }
 };
@@ -331,6 +353,7 @@ export const LAWS: Law[] = [
     enact: (state, _rng, pmKey) => {
       const paid = [...partners(state, pmKey)].sort((a, b) => b.seats - a.seats);
       const [favoured, ...rest] = paid;
+      if (!favoured) return "The sectoral budget is withdrawn before the vote.";
       feel(state, favoured, 0.55, "a sectoral budget written for them");
       for (const party of rest) feel(state, party, -0.2, "a sectoral budget written for somebody else");
       return `A sectoral budget is written more or less to ${theList(favoured.name)}'s dictation. ${TheList(favoured.name)} is now very hard to buy away from you, and ${listOf(rest)} ${rest.length === 1 ? "has" : "have"} noticed what a coalition agreement is worth.`;
@@ -359,6 +382,7 @@ export const LAWS: Law[] = [
       const outside = Object.values(state.parties).filter(
         (party) => party.heldBy !== pmKey && !party.heldBy,
       );
+      if (outside.length === 0) return "The commission of inquiry is voted down.";
       const target = rng.pick(outside);
       feel(state, target, -0.5, "the commission of inquiry");
       return `A state commission of inquiry is voted into being, and its terms of reference happen to describe ${theList(target.name)} precisely. ${TheList(target.name)} is going cheap while it sits — to everyone, not only to you.`;
@@ -532,6 +556,21 @@ export const enactLaw = (
   if (!state.bill.options.includes(lawId)) return null;
   const law = lawById(lawId);
   if (!law) return null;
+
+  /*
+   * A bill is drawn at the end of one turn and moved at the end of the next,
+   * and a great deal happens in between: a card releases a partner, the
+   * coalition breaks, a merger takes a list off the board. So the precondition
+   * has to hold when the law is *passed*, not only when it was tabled — a
+   * sectoral budget written for the largest partner has nobody to write it for
+   * once the last partner has walked, and `enact` would reach for a party that
+   * is not there.
+   *
+   * A bill that has been overtaken by events simply does not pass. That is what
+   * happens to real ones, and the turn reports it as a year with no
+   * legislation rather than pretending something went through.
+   */
+  if (!law.available(state, pmKey)) return null;
 
   const text = law.enact(state, rng, pmKey);
   state.lawsPassed.push({

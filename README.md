@@ -258,16 +258,33 @@ greedy bot's move goes to the engine directly or through a round trip of model-s
 `scripts/balance.ts` plays every seed twice with the strategies swapped between the same two seats,
 because the parties are wildly unequal and a naive comparison would mostly measure who drew Likud.
 
-> **These figures predate the standing red lines and have not been re-measured.** Permanent
-> refusals change what every campaign can reach, so the percentage below is the last measurement of
-> a different rule set. Run `npm run balance` to replace it; the probe now also plays shrewd against
-> greedy head to head, swapped between the seats on the same board.
+Re-measured after the home party started keeping a share of the cabinet: **greedy beats random
+70.6%** over 480 campaigns, every one of them reaching a winner, a campaign running a median of 18
+turns across a mean of 4.18 parliaments. Forming a coalition takes a median of 2 weeks — well inside
+the six-week limit, with head-to-head negotiations running to 14. Governments last a mean of 2.61
+years, inside the four-year term, so the term is a ceiling on the safe ones rather than the usual way
+one ends. **Shrewd beats greedy 60.6%.**
 
-Previously, on the 22nd Knesset it opens on: **greedy beat random 71.5%** over 480 campaigns, every
-one of them reaching a winner, a campaign running a median of 18 turns across a mean of 4.25
-parliaments. Forming a coalition takes a median of 2 weeks — well inside the six-week limit, with
-head-to-head negotiations running to 19. Governments last a mean of 2.55 years, inside the four-year
-term, so the term is a ceiling on the safe ones rather than the usual way one ends.
+`scripts/tune.ts` is the other half of this, and the one to reach for when changing a bot rather than
+a rule. It plays a matchup over four boards with the seats swapped — 3200 games a configuration —
+sweeps one dial at a time, and prints a 95% interval beside every number so a three-point move is
+visibly not a result. `--defender` chooses who is on the other side of the table, which turns out to
+matter more than anything else in the file:
+
+- **A dial tuned against a weak opponent can be tuned backwards.** Greedy's defensive spending
+  measures best at *zero* against random — 80% against 76% — because random almost never poaches a
+  partner, so every shekel spent defending is wasted by construction. Against shrewd, turning
+  defence off costs eight points. Random is the wrong opponent for a defensive question.
+- **A rule change silently re-tuned both bots.** Both price a bid as a fraction of the purse, and
+  the home party's claim halved the purse, so both were quietly bidding half what they used to.
+  Greedy's best aggression moved from 0.3 to 0.7, worth ten points against a fixed opponent; shrewd's
+  from 0.3 to 0.55 once greedy stopped underbidding, worth nine.
+- **Denial does nothing.** Swept from 0 to 2.5, shrewd's win rate moves between 61.4% and 62.5% —
+  the width of the noise. Turning off one of that bot's three headline ideas is indistinguishable
+  from turning it up fourfold, and the docstring in `shrewd.ts` now says so.
+- **An exact portfolio picker is worth nothing.** Choosing the cheapest subset that clears a price,
+  rather than piling on the small end until it does, measures dead level in all three matchups. The
+  note in `src/bots/spend.ts` records it so it is not tried a third time.
 
 The probe reads `DEFAULT_CHAMBER`, so it measures whichever board the game opens on; the table above
 is that same probe run once per chamber.

@@ -12,6 +12,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "balance": "vite-node scripts/balance.ts",
+    "tune": "vite-node scripts/tune.ts --",
     "playtest": "vite-node scripts/playtest.ts --"
   },
   "dependencies": {

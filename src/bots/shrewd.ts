@@ -28,6 +28,7 @@
 
 import { MAJORITY } from "../engine/parties";
 import type { Rng } from "../engine/rng";
+import { cheapestAtLeast } from "./spend";
 import type { Bid, GameState, Offer, Party } from "../engine/types";
 import {
   OFFERS_PER_TURN,
@@ -36,47 +37,52 @@ import {
   emptyOffer,
   freeBudget,
   freeMinistries,
-  ministryByKey,
   packageValue,
   playerOf,
   refusalsAgainst,
   valueOf,
 } from "../engine/types";
 
-/** Mandates of headroom to aim past a bare majority. */
-const BUFFER = 6;
-
-/** How far past the standing package to bid, where somebody is competing. */
-const AGGRESSION = 0.3;
-
 /**
- * What a mandate denied to the leading rival is worth against one gained.
+ * The dials, in one mutable object so `scripts/tune.ts` can sweep them.
  *
- * Below 1 on purpose: a seat in your own bloc counts toward your 61, and a seat
- * merely kept from somebody else does not. This is the dial the balance probe
- * has to judge — too high and the bot spends the campaign spoiling instead of
- * governing.
+ * Re-swept after the home party started keeping a share of the cabinet, which
+ * halved the purse every fraction here is taken of.
  */
-const DENIAL = 0.6;
+export const SHREWD_TUNING = {
+  /** Mandates of headroom to aim past a bare majority. */
+  buffer: 6,
 
-/** The cheapest handful of portfolios worth at least `target`. */
-const cheapestUpTo = (
-  state: GameState,
-  hand: readonly string[],
-  target: number,
-): string[] | null => {
-  const budget = (key: string): number => ministryByKey(state, key)?.budget ?? 0;
-  const sorted = [...hand].sort((a, b) => budget(a) - budget(b));
+  /**
+   * How far past the standing package to bid, where somebody is competing.
+   *
+   * Re-swept against greedy after greedy's own aggression was fixed, which is
+   * the only honest way to read this number: it is a best response to a
+   * particular opponent, not a property of the game, and it moved from 0.3 to
+   * 0.55 the moment the opponent stopped underbidding. Worth nine points.
+   */
+  aggression: 0.55,
 
-  const chosen: string[] = [];
-  let total = 0;
-  for (const key of sorted) {
-    if (total >= target) break;
-    chosen.push(key);
-    total += budget(key);
-  }
-  return total >= target ? chosen : null;
+  /**
+   * What a mandate denied to the leading rival is worth against one gained.
+   *
+   * Below 1 on purpose: a seat in your own bloc counts toward your 61, and a
+   * seat merely kept from somebody else does not.
+   *
+   * And it does nothing. Swept from 0 to 2.5 the win rate moves between 61.4%
+   * and 62.5%, which is the width of the noise — turning the whole idea off is
+   * indistinguishable from turning it up fourfold. That is a finding about one
+   * of this bot's three headline ideas and it is left here rather than tidied
+   * away: denial is not what makes shrewd better than greedy, and anyone
+   * looking for another few points should not look here. Kept at the documented
+   * value because there is no evidence for moving it either.
+   */
+  denial: 0.6,
+
+  /** Share of what is left in hand that a defensive top-up costs. */
+  defenceShare: 0.3,
 };
+
 
 const reachable = (state: GameState, playerKey: string): Party[] =>
   biddableParties(state).filter((party) => refusalsAgainst(state, party, playerKey).length === 0);
@@ -204,20 +210,20 @@ const take = (
       // Seats past what a comfortable majority needs buy nothing, so they are
       // not counted. This is the whole of what greedy gets wrong about a very
       // large list when the gap is small.
-      const gain = Math.min(party.seats, position.shortfall + BUFFER);
+      const gain = Math.min(party.seats, position.shortfall + SHREWD_TUNING.buffer);
       const contested = contestedBy(state, party, position.rival?.key ?? null);
       const denial = contested ? Math.min(party.seats, position.rivalShortfall) : 0;
-      const worth = gain + DENIAL * denial;
+      const worth = gain + SHREWD_TUNING.denial * denial;
       if (worth <= 0) continue;
 
       const floor = packageValue(state, party.key) + 1;
       const share = Math.min(1, party.seats / Math.max(1, position.shortfall));
       // Nobody to outbid means nothing to outbid them with.
       const price = contested
-        ? Math.max(floor, Math.ceil(purse * share * AGGRESSION))
+        ? Math.max(floor, Math.ceil(purse * share * SHREWD_TUNING.aggression))
         : floor;
 
-      const ministries = cheapestUpTo(state, hand, price);
+      const ministries = cheapestAtLeast(state, hand, price);
       if (!ministries) continue;
       const cost = valueOf(state, ministries);
       if (!best || worth / cost > best.worth / best.cost) {
@@ -265,7 +271,11 @@ const defend = (
     // A partner nobody is bidding for keeps itself; an incumbent only has to
     // match, so there is nothing to defend against.
     if (!contestedBy(state, party, rival?.key ?? null)) continue;
-    const topUp = cheapestUpTo(state, remaining, Math.ceil(valueOf(state, remaining) * 0.3));
+    const topUp = cheapestAtLeast(
+      state,
+      remaining,
+      Math.ceil(valueOf(state, remaining) * SHREWD_TUNING.defenceShare),
+    );
     if (!topUp || topUp.length === 0) break;
     remaining = remaining.filter((key) => !topUp.includes(key));
     bids.push({ partyKey: party.key, ministries: topUp });
@@ -290,7 +300,7 @@ const regroup = (state: GameState, playerKey: string): Offer => {
   const freed = [...freeMinistries(state, playerKey), ...worst.package];
   for (const party of [...reachable(state, playerKey)].sort((a, b) => b.seats - a.seats)) {
     if (party.key === worst.key || party.seats <= worst.seats) continue;
-    const ministries = cheapestUpTo(state, freed, packageValue(state, party.key) + 1);
+    const ministries = cheapestAtLeast(state, freed, packageValue(state, party.key) + 1);
     if (!ministries) continue;
     return { bids: [{ partyKey: party.key, ministries }], withdrawFrom: [worst.key] };
   }

@@ -16,6 +16,7 @@
  */
 
 import type { Rng } from "../engine/rng";
+import { cheapestAtLeast } from "./spend";
 import type { Bid, GameState, Offer, Party } from "../engine/types";
 import {
   OFFERS_PER_TURN,
@@ -23,54 +24,61 @@ import {
   blocSeats,
   emptyOffer,
   freeMinistries,
-  ministryByKey,
   packageValue,
   playerOf,
   refusalsAgainst,
   valueOf,
 } from "../engine/types";
 
-/** Mandates of headroom to aim past a bare majority. */
-const BUFFER = 6;
-
 /**
- * How far past the standing package this bot bids.
+ * The dials, in one mutable object so `scripts/tune.ts` can sweep them.
  *
- * A rival is bidding blind against it this same turn, so the minimum winning
- * offer wins nothing very often. This is the dial between paying the going rate
- * and paying to be sure, as a fraction of what the party is worth.
- *
- * Measured, not guessed. With three tables a week the thrifty end wins: 0.3
- * takes greedy to 60% against random where 0.85 leaves it on 51%. Paying to be
- * sure on the first table is paying with the second and third.
+ * Every one of these is a measured number rather than a preference, and the
+ * numbers moved when the home party started keeping a share of the cabinet:
+ * the purse a bid is priced against is roughly half what it used to be, so
+ * anything expressed as a fraction of the purse was quietly re-scaled. They
+ * were re-swept after that change rather than reasoned about.
  */
-const AGGRESSION = 0.3;
+export const GREEDY_TUNING = {
+  /**
+   * Mandates of headroom to aim past a bare majority.
+   *
+   * Higher than it looks like it should be. A coalition assembled to exactly 61
+   * is one card away from not being one, and the parties that would repair it
+   * have all been bought by then. Aiming at 75 costs nothing when the money
+   * runs out first anyway, and it is worth about five points a game.
+   */
+  buffer: 14,
 
-/**
- * The cheapest handful of portfolios worth at least `target`.
- *
- * Small ones first, so the great offices stay in hand for the parties that will
- * actually demand them. With no limit on how many portfolios a table can hold,
- * taking the small end until the price is met is both the cheapest way to reach
- * it and the one that overshoots least.
- */
-const cheapestUpTo = (
-  state: GameState,
-  hand: readonly string[],
-  target: number,
-): string[] | null => {
-  const budget = (key: string): number => ministryByKey(state, key)?.budget ?? 0;
-  const sorted = [...hand].sort((a, b) => budget(a) - budget(b));
+  /**
+   * How far past the standing package this bot bids.
+   *
+   * A rival is bidding blind against it this same turn, so the minimum winning
+   * offer wins nothing very often. This is the dial between paying the going
+   * rate and paying to be sure, as a fraction of what the party is worth.
+   *
+   * This was 0.3, measured when a player had the whole cabinet to spend. The
+   * home party's claim took half of it, and because the bid is a fraction of
+   * the purse rather than a sum, that quietly halved every offer the bot made
+   * — it was not being thrifty, it was being priced out. Re-swept against a
+   * bot that actually competes for the same lists, the optimum came back at
+   * 0.7, worth six points a game against shrewd and nothing at all against
+   * random, which never bids for anything it holds.
+   */
+  aggression: 0.7,
 
-  const chosen: string[] = [];
-  let total = 0;
-  for (const key of sorted) {
-    if (total >= target) break;
-    chosen.push(key);
-    total += budget(key);
-  }
-  return total >= target ? chosen : null;
+  /**
+   * Share of what is left in hand that a defensive top-up costs.
+   *
+   * Zero measures beautifully against random — 80% against 76% — and is a
+   * trap. Random almost never poaches a partner, so against it every shekel
+   * spent defending is wasted by construction. Against a bot that does poach,
+   * dropping defence costs eight points. It is the clearest case in this file
+   * of a dial that must not be tuned against a weak opponent.
+   */
+  defenceShare: 0.3,
 };
+
 
 const reachable = (state: GameState, playerKey: string): Party[] =>
   biddableParties(state).filter((party) => refusalsAgainst(state, party, playerKey).length === 0);
@@ -84,7 +92,7 @@ const targetCoalition = (state: GameState, playerKey: string): Party[] => {
     return b.seats - a.seats;
   });
 
-  const wanted = Math.max(0, 61 - own) + BUFFER;
+  const wanted = Math.max(0, 61 - own) + GREEDY_TUNING.buffer;
   const targets: Party[] = [];
   let running = 0;
   for (const party of ranked) {
@@ -130,12 +138,12 @@ export const greedyOffer = (state: GameState, playerKey: string, _rng: Rng): Off
       // against the whole purse. Then bid a fraction of that, but never less
       // than it takes to beat the package the party is already sitting on.
       const floor = packageValue(state, party.key) + 1;
-      const price = Math.max(floor, Math.ceil(budget * share * AGGRESSION));
+      const price = Math.max(floor, Math.ceil(budget * share * GREEDY_TUNING.aggression));
       // A party it cannot afford to bid properly for is one to leave alone.
       // Falling back to the minimum that would take it looks thrifty and is
       // fatal: the ranking below is seats per billion, so a bare-minimum bid
       // outranks every real one and the bot spends the campaign being outbid.
-      const ministries = cheapestUpTo(state, hand, price);
+      const ministries = cheapestAtLeast(state, hand, price);
       if (!ministries) continue;
       const cost = valueOf(state, ministries);
       if (!best || party.seats / cost > best.party.seats / best.cost) {
@@ -181,8 +189,8 @@ const defend = (
 
   for (const party of weakest.slice(0, slots)) {
     if (remaining.length === 0) break;
-    const share = Math.ceil(valueOf(state, remaining) * 0.3);
-    const topUp = cheapestUpTo(state, remaining, share) ?? [...remaining];
+    const share = Math.ceil(valueOf(state, remaining) * GREEDY_TUNING.defenceShare);
+    const topUp = cheapestAtLeast(state, remaining, share) ?? [...remaining];
     if (topUp.length === 0) break;
     remaining = remaining.filter((key) => !topUp.includes(key));
     bids.push({ partyKey: party.key, ministries: topUp });
@@ -213,7 +221,7 @@ const withdrawToRegroup = (state: GameState, playerKey: string): Offer => {
   const freed = [...freeMinistries(state, playerKey), ...worst.package];
   for (const party of [...reachable(state, playerKey)].sort((a, b) => b.seats - a.seats)) {
     if (party.key === worst.key || party.seats <= worst.seats) continue;
-    const ministries = cheapestUpTo(state, freed, packageValue(state, party.key) + 1);
+    const ministries = cheapestAtLeast(state, freed, packageValue(state, party.key) + 1);
     if (!ministries) continue;
     return { bids: [{ partyKey: party.key, ministries }], withdrawFrom: [worst.key] };
   }

@@ -139,6 +139,45 @@ describe("the order paper", () => {
     expect(enactLaw(state, new Rng(1), "bot1", "cost-of-living")).toBeNull();
   });
 
+  it("does not pass a bill that events have overtaken", () => {
+    // A bill is tabled at the end of one turn and moved at the end of the next.
+    // In between the coalition can break, and a law written for a partner has
+    // nobody to write it for. Found by the tuning harness, which crashed here.
+    const state = govern(setup());
+    const target = Object.values(state.parties).find((party) => party.key !== "likud")!;
+    target.heldBy = "you";
+    const second = Object.values(state.parties).find(
+      (party) => party.key !== "likud" && party.key !== target.key,
+    )!;
+    second.heldBy = "you";
+    expect(lawById("sectoral-budget")!.available(state, "you")).toBe(true);
+
+    state.bill = { playerKey: "you", options: ["sectoral-budget"] };
+    // Both partners walk before the vote is called.
+    target.heldBy = null;
+    second.heldBy = null;
+
+    expect(() => enactLaw(state, new Rng(1), "you", "sectoral-budget")).not.toThrow();
+    expect(enactLaw(state, new Rng(1), "you", "sectoral-budget")).toBeNull();
+    expect(state.lawsPassed).toEqual([]);
+  });
+
+  it("survives every law being moved against a board that has moved on", () => {
+    // The general case of the above, over the whole pool: table each law, strip
+    // the board back to nothing, and move it anyway.
+    for (const law of LAWS) {
+      const state = govern(setup());
+      state.bill = { playerKey: "you", options: [law.id] };
+      for (const party of Object.values(state.parties)) {
+        party.heldBy = null;
+        party.package = [];
+        party.refusals = [];
+      }
+      state.primeMinister = "you";
+      expect(() => enactLaw(state, new Rng(5), "you", law.id), law.id).not.toThrow();
+    }
+  });
+
   it("records what it passed", () => {
     const state = govern(setup());
     state.bill = { playerKey: "you", options: ["cost-of-living"] };
@@ -234,6 +273,31 @@ describe("a cabinet law reaches every player at once", () => {
     // The agreement now names the merged office rather than a dead key.
     expect(held.package).toHaveLength(1);
     expect(state.ministries.some((m) => m.key === held.package[0])).toBe(true);
+  });
+
+  it("never promises one portfolio to two parties", () => {
+    // A merger maps two keys onto one. Pay two different partners with the two
+    // halves, merge them, and a naive redirect puts the single merged office
+    // inside both packages -- one portfolio holding up two parties, which is
+    // worth double what it cost. Found by an invariant test after the bots
+    // started spending differently enough to reach it.
+    const state = govern(setup());
+    const ladder = [...state.ministries].sort((a, b) => a.budget - b.budget);
+    const parties = Object.values(state.parties).filter((party) => party.key !== "likud");
+    parties[0].heldBy = "you";
+    parties[0].package = [ladder[0].key];
+    parties[1].heldBy = "you";
+    parties[1].package = [ladder[1].key];
+
+    state.bill = { playerKey: "you", options: ["merge-offices"] };
+    expect(enactLaw(state, new Rng(3), "you", "merge-offices")).toBeTruthy();
+
+    const locked = Object.values(state.parties)
+      .filter((party) => party.heldBy === "you")
+      .flatMap((party) => party.package);
+    expect(new Set(locked).size).toBe(locked.length);
+    // Exactly one of the two keeps the merged office; the other loses it.
+    expect(parties[0].package.length + parties[1].package.length).toBe(1);
   });
 
   it("leaves no package holding a portfolio that no longer exists", () => {
