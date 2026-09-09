@@ -1,15 +1,101 @@
+/*
+ * Kingmaker.
+ *
+ * Two games share this screen. Forming a government is night work: cold ground,
+ * lamplight, a six-week fuse. Governing is daylight and ceremony: warm stone,
+ * gold, a four-year term to defend. Everything that differs between them is a
+ * custom property re-declared under [data-phase], so the components never learn
+ * which mood they are being drawn in.
+ *
+ * Governing has two sides to it, and [data-side] is the second axis: the gold
+ * belongs to the government benches. From the opposition the same four years
+ * are a sentence rather than a term, so the accent goes red and the daylight
+ * comes off the stone.
+ */
+
 :root {
-  --bg: #0e1016;
-  --panel: #161a23;
-  --panel-2: #1d222d;
-  --line: #2a3140;
-  --text: #eceef2;
-  --dim: #8b94a5;
-  --gold: #e0a63c;
+  /* Ground and structure, shared by both phases. */
+  --bg: #0b0d13;
+  --panel: #151924;
+  --panel-2: #1c2130;
+  --line: #2a3242;
+  --line-soft: #212836;
+  --text: #eef0f5;
+  --dim: #8d96a8;
+  --dimmer: #5d6678;
   --good: #6fc38a;
   --bad: #e0705f;
 
+  /* The phase palette. These are the forming-phase defaults. */
+  --accent: #e0a63c;
+  --accent-soft: #2c2413;
+  --accent-ink: #1d1503;
+  --mood-deep: #0d1424;
+  --chamber-glow: rgba(74, 111, 165, 0.16);
+  --grain: rgba(120, 150, 200, 0.05);
+  /* An empty bench is furniture, and furniture is lit by the room it is in. */
+  --seat-vacant: #232b3a;
+
   color-scheme: dark;
+}
+
+/*
+ * Governing: the lamps go off and the building is lit properly.
+ *
+ * The panels warm up along with the backdrop. Forming is furniture in a dark
+ * room; governing is stone in daylight, and the cards have to sit in the same
+ * light as the wall behind them or the change reads as a filter over one
+ * picture rather than two rooms.
+ */
+[data-phase="governing"] {
+  --panel: #1b2019;
+  --panel-2: #232a20;
+  --line: #38412f;
+  --line-soft: #2a3124;
+  --accent: #e8c15c;
+  --accent-soft: #2f2814;
+  --accent-ink: #1e1704;
+  --mood-deep: #101d15;
+  --chamber-glow: rgba(120, 165, 125, 0.16);
+  --grain: rgba(190, 175, 120, 0.05);
+  --seat-vacant: #2b3327;
+}
+
+/*
+ * The opposition benches.
+ *
+ * Declared after the phases so it wins on source order: same specificity, and
+ * which side you sit on outranks which phase you are sitting in. Only the
+ * accent and the warmth change — it is the same building, seen from the seats
+ * that do not get the light.
+ */
+[data-side="opposition"] {
+  --panel: #1d1a20;
+  --panel-2: #251f26;
+  --line: #43323a;
+  --line-soft: #322730;
+  --accent: #e0565c;
+  --accent-soft: #33161a;
+  --accent-ink: #21060a;
+  --mood-deep: #1b0d14;
+  --chamber-glow: rgba(190, 70, 82, 0.16);
+  --grain: rgba(220, 130, 140, 0.05);
+  --seat-vacant: #2e2530;
+}
+
+/* Rebuilding: one turn to put it back together. */
+[data-phase="rebuilding"] {
+  --panel: #211719;
+  --panel-2: #2b1e1e;
+  --line: #452e2b;
+  --line-soft: #332422;
+  --accent: #e8804f;
+  --accent-soft: #331d13;
+  --accent-ink: #1f0d04;
+  --mood-deep: #1d0f0a;
+  --chamber-glow: rgba(200, 90, 60, 0.2);
+  --grain: rgba(220, 130, 100, 0.06);
+  --seat-vacant: #33262a;
 }
 
 * { box-sizing: border-box; }
@@ -23,7 +109,7 @@ body {
 }
 
 h1, h2 { font-weight: 650; letter-spacing: -0.02em; margin: 0; }
-h1 { font-size: 34px; }
+h1 { font-size: 38px; letter-spacing: -0.03em; }
 h2 { font-size: 19px; }
 
 button {
@@ -32,171 +118,718 @@ button {
   cursor: pointer;
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: 9px;
   padding: 8px 12px;
-  transition: transform 0.08s ease, border-color 0.12s ease, background 0.12s ease;
+  transition: transform 0.09s ease, border-color 0.14s ease, background 0.14s ease,
+    box-shadow 0.14s ease;
 }
-button:hover:not(:disabled) { border-color: #414c60; }
+button:hover:not(:disabled) { border-color: #46536a; }
 button:active:not(:disabled) { transform: translateY(1px); }
 button:disabled { opacity: 0.4; cursor: not-allowed; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .commit {
-  background: var(--gold);
-  border-color: var(--gold);
-  color: #241a05;
-  font-weight: 650;
-  padding: 10px 20px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--accent) 88%, white), var(--accent));
+  border-color: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 700;
+  padding: 11px 22px;
   font-size: 15px;
+  box-shadow: 0 2px 0 color-mix(in srgb, var(--accent) 45%, black), 0 8px 22px -12px var(--accent);
 }
-.commit:hover:not(:disabled) { background: #efb75a; }
+.commit:hover:not(:disabled) { filter: brightness(1.07); }
+.commit:active:not(:disabled) { box-shadow: 0 1px 0 color-mix(in srgb, var(--accent) 45%, black); }
 .ghost { background: transparent; }
 
 /* ----------------------------------------------------------------- setup */
 
-.setup { max-width: 720px; margin: 0 auto; padding: 8vh 22px 60px; }
-.lede { color: var(--dim); font-size: 15px; line-height: 1.6; max-width: 58ch; }
-.setup-block { margin-top: 28px; }
-.setup-label {
-  font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase;
-  color: var(--dim); margin-bottom: 10px;
+.setup {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 7vh 22px 60px;
+  position: relative;
 }
-.hint { color: var(--dim); font-size: 12.5px; margin: 10px 0 0; }
+.setup::before {
+  /* A wash behind the title, so the opening screen is not a flat sheet. */
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(120% 65% at 50% 0%, var(--mood-deep), transparent 70%),
+    radial-gradient(60% 40% at 12% 8%, var(--grain), transparent 70%);
+  pointer-events: none;
+  z-index: -1;
+}
+/*
+ * The title screen is the one place with room for a title.
+ *
+ * Guarded, because the fill is transparent and a browser that cannot clip the
+ * background to the glyphs would render the word invisible rather than plain.
+ */
+.setup > h1 { font-size: 46px; line-height: 1.05; margin-bottom: 4px; }
+@supports ((-webkit-background-clip: text) or (background-clip: text)) {
+  .setup > h1 {
+    background: linear-gradient(
+      168deg,
+      var(--text) 22%,
+      color-mix(in srgb, var(--accent) 78%, var(--text)) 98%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+.lede { color: var(--dim); font-size: 15px; line-height: 1.62; max-width: 58ch; }
+.setup-block { margin-top: 30px; }
+.setup-label {
+  font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--dimmer); margin-bottom: 11px;
+  display: flex; flex-wrap: wrap; gap: 10px; align-items: center;
+}
+/* A rule running out from the label to the edge of the block. It carries no
+   information; it is there so a stack of sections reads as a document with
+   headings rather than as four grids that happen to be under each other. */
+.setup-label::after {
+  content: ""; flex: 1 1 40px; height: 1px; min-width: 24px;
+  background: linear-gradient(90deg, var(--line), transparent 88%);
+}
+
+/*
+ * The house mark behind the title.
+ *
+ * Almost out: it is the only thing on the screen that is not a number, and the
+ * moment it competes with the lede it has stopped being a watermark. It sits
+ * behind the text and takes no clicks.
+ */
+.setup-emblem {
+  position: absolute; top: 1.5vh; right: -26px;
+  width: 268px; height: 268px;
+  color: var(--accent);
+  opacity: 0.07;
+  pointer-events: none;
+  z-index: -1;
+}
+@media (max-width: 720px) { .setup-emblem { width: 190px; height: 190px; top: 0; right: -34px; } }
+
+/* The same mark on the board, where it is a maker's stamp rather than a
+   backdrop: small, dim, and out of the way of the phase it labels. */
+.hud-emblem {
+  position: absolute; left: -46px; top: -4px;
+  width: 34px; height: 34px;
+  color: var(--accent); opacity: 0.4;
+}
+.hud-left { position: relative; }
+@media (max-width: 1180px) { .hud-emblem { display: none; } }
+/* Which Knesset is actually selected, spelled out beside the label. */
+.setup-aside { color: var(--dim); letter-spacing: 0.04em; text-transform: none; font-size: 12px; }
+
+/* Twenty-six elections. Small, dense, and readable at a glance by year. */
+.chamber-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); gap: 6px; }
+.chamber {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  padding: 7px 4px; border-radius: 8px; cursor: pointer;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+}
+.chamber:hover { border-color: var(--line-strong, var(--accent)); }
+.chamber.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel-2)); }
+.chamber.projected .chamber-ord { color: var(--accent); }
+.chamber-ord { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.chamber-year { font-size: 10px; color: var(--dim); font-variant-numeric: tabular-nums; }
+.hint { color: var(--dim); font-size: 12.5px; margin: 11px 0 0; max-width: 62ch; }
 .row { display: flex; gap: 8px; flex-wrap: wrap; }
 
-.pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 8px; }
+.pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 8px; }
+/*
+ * A list to lead: the mandates, then the name, then the politics under it.
+ *
+ * The bloc used to sit on the same line as the name, which meant a three-word
+ * list wrapped around it and every card in the row grew to match. Stacking the
+ * two lets a long name have the width and keeps the grid square.
+ */
 .pick {
-  display: flex; align-items: baseline; gap: 8px;
+  display: flex; align-items: center; gap: 10px;
   text-align: left; padding: 10px 12px;
+  background: var(--panel);
 }
 .pick.slim { display: inline-flex; }
-.pick.on { border-color: var(--gold); background: #2a2312; }
-.pick-seats { font-size: 19px; font-weight: 650; min-width: 26px; }
-.pick-name { flex: 1; font-size: 13px; }
-.pick-bloc { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.06em; }
+.pick-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pick.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+/* The seat count on a disc tinted by the party's politics, so the grid can be
+   read as a spectrum before a single name has been. */
+.pick-seats {
+  display: grid; place-items: center; flex: 0 0 auto;
+  width: 40px; height: 40px; border-radius: 50%;
+  font-size: 18px; font-weight: 800; font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  background: radial-gradient(
+    circle at 34% 28%,
+    color-mix(in srgb, var(--bloc, var(--line)) 34%, transparent),
+    color-mix(in srgb, var(--bloc, var(--line)) 13%, transparent) 70%
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bloc, var(--line)) 40%, transparent);
+}
+.pick-name { font-size: 13px; line-height: 1.25; }
+.pick-bloc { font-size: 10px; text-transform: uppercase; letter-spacing: 0.09em; }
+.hint code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
+
+/* What the country did with this board. The benchmark, not a footnote. */
+.outcome {
+  display: flex; gap: 9px; align-items: baseline;
+  margin: 9px 0 0; padding: 9px 12px; max-width: 62ch;
+  border-left: 2px solid var(--line);
+  background: var(--panel-2); border-radius: 0 8px 8px 0;
+  color: var(--dim); font-size: 12.5px; line-height: 1.55;
+}
+.outcome strong { color: var(--text); font-weight: 650; }
+.outcome-dot {
+  flex: 0 0 auto; width: 8px; height: 8px; border-radius: 50%;
+  align-self: center; background: var(--line);
+}
+.outcome.hung { border-left-color: var(--bad); }
+.outcome.hung .outcome-dot { background: transparent; box-shadow: inset 0 0 0 1.5px var(--bad); }
 
 .seed {
-  font: inherit; color: inherit; width: 90px;
+  font: inherit; color: inherit; width: 92px;
   background: var(--panel-2); border: 1px solid var(--line);
-  border-radius: 8px; padding: 9px 12px;
+  border-radius: 9px; padding: 10px 12px;
 }
 .tag {
-  display: inline-block; color: #17140a; font-size: 11px; font-weight: 700;
-  letter-spacing: 0.1em; text-transform: uppercase;
-  padding: 4px 10px; border-radius: 20px; margin-bottom: 14px;
+  display: inline-block; color: var(--accent-ink); font-size: 11px; font-weight: 800;
+  letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 5px 11px; border-radius: 20px; margin-bottom: 14px;
 }
 
 /* ----------------------------------------------------------------- board */
 
-.board { max-width: 1040px; margin: 0 auto; padding: 18px 18px 40px; }
+.board {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 18px 18px 44px;
+  position: relative;
+}
+/*
+ * The room the turn happens in.
+ *
+ * Recolouring one gradient was not enough to tell the phases apart — they read
+ * as the same picture in two tempers. So each phase gets its own construction.
+ * Forming is a dark room lit by one lamp over the table: a tight spotlight,
+ * heavy vignette, nothing else in the frame. Governing is a lit building: a
+ * pale stone wash, the horizontal courses of a chamber wall, and a colonnade
+ * standing behind the board. You can tell them apart with the text blurred out.
+ */
+.board::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  transition: background 0.6s ease, opacity 0.6s ease;
+  z-index: -1;
+}
+
+/* Forming: one lamp, one table, and a lot of dark around it. */
+[data-phase="forming"].board::before {
+  background:
+    radial-gradient(58% 42% at 50% 0%, rgba(120, 152, 214, 0.2), transparent 72%),
+    radial-gradient(90% 60% at 50% -10%, var(--mood-deep), transparent 70%),
+    radial-gradient(130% 96% at 50% 42%, transparent 38%, rgba(4, 6, 11, 0.72) 100%);
+}
+
+/* Governing: daylight on stone, with the courses and columns of the chamber. */
+[data-phase="governing"].board::before {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 78px,
+      rgba(226, 214, 178, 0.045) 78px 116px,
+      transparent 116px 194px
+    ),
+    repeating-linear-gradient(
+      180deg,
+      rgba(226, 214, 178, 0.05) 0 1px,
+      transparent 1px 46px
+    ),
+    linear-gradient(180deg, rgba(140, 168, 138, 0.14), transparent 46%),
+    radial-gradient(120% 80% at 50% 0%, var(--mood-deep), transparent 76%);
+}
+
+/* Rebuilding: the same building, with the lights failing. */
+[data-phase="rebuilding"].board::before {
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(226, 150, 120, 0.05) 0 1px,
+      transparent 1px 46px
+    ),
+    radial-gradient(80% 55% at 50% 0%, rgba(200, 92, 60, 0.26), transparent 70%),
+    radial-gradient(130% 96% at 50% 40%, transparent 30%, rgba(24, 6, 4, 0.7) 100%);
+  animation: flicker 5.5s ease-in-out infinite;
+}
+@keyframes flicker { 45% { opacity: 0.82; } 52% { opacity: 1; } }
+
+/* The same colonnade with the daylight off it, and the vignette back on. */
+[data-side="opposition"].board::before {
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 78px,
+      rgba(214, 172, 182, 0.032) 78px 116px,
+      transparent 116px 194px
+    ),
+    repeating-linear-gradient(
+      180deg,
+      rgba(214, 172, 182, 0.038) 0 1px,
+      transparent 1px 46px
+    ),
+    linear-gradient(180deg, rgba(150, 58, 72, 0.13), transparent 44%),
+    radial-gradient(120% 80% at 50% 0%, var(--mood-deep), transparent 74%),
+    radial-gradient(130% 96% at 50% 40%, transparent 34%, rgba(12, 4, 8, 0.74) 100%);
+  animation: none;
+}
 
 .hud { display: flex; justify-content: space-between; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
-.phase { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
-.clock { color: var(--dim); font-size: 12.5px; margin-top: 2px; }
+
+.phase-tag {
+  display: inline-block;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--accent);
+  border-left: 3px solid var(--accent);
+  padding: 3px 9px;
+  margin-bottom: 6px;
+}
+/* The alarm is the government's. From the other side it is not an emergency. */
+[data-phase="rebuilding"][data-side="government"] .phase-tag {
+  animation: alarm 1.4s ease-in-out infinite;
+}
+@keyframes alarm { 50% { opacity: 0.45; } }
+
+.phase { font-size: 26px; font-weight: 700; letter-spacing: -0.025em; }
+.clock { display: flex; align-items: center; gap: 10px; margin-top: 7px; }
+.clock-text { color: var(--dim); font-size: 12.5px; }
+
+/* The fuse. Six weeks to form something, four years to keep it. */
+.pips { display: inline-flex; gap: 4px; }
+.pip {
+  width: 16px; height: 5px; border-radius: 3px;
+  background: var(--line);
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+.pip.spent { background: var(--accent); }
+.pip.now { box-shadow: 0 0 9px var(--accent); }
+[data-phase="forming"] .pip.now { animation: tick 1.9s ease-in-out infinite; }
+@keyframes tick { 50% { opacity: 0.5; } }
+/* Governing counts years banked rather than weeks burnt, and looks steadier. */
+[data-phase="governing"] .pip { border-radius: 2px; height: 6px; }
 
 .scores { display: flex; gap: 8px; flex-wrap: wrap; }
-.score { border: 1px solid; border-radius: 10px; padding: 7px 11px; min-width: 104px; background: var(--panel); }
-.score.pm { box-shadow: inset 0 0 0 1px currentColor; }
-.score-name { font-size: 12px; font-weight: 600; }
+.score {
+  border: 1px solid; border-radius: 11px; padding: 8px 12px; min-width: 108px;
+  background: linear-gradient(180deg, var(--panel), var(--bg));
+}
+.score.pm { box-shadow: inset 0 0 0 1px currentColor, 0 0 22px -8px currentColor; }
+.score-name { font-size: 12px; font-weight: 650; }
 .score-name .kind { color: var(--dim); font-weight: 400; font-size: 10.5px; }
-.score-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px; }
-.seats { font-size: 20px; font-weight: 650; }
+.score-row { display: flex; justify-content: space-between; align-items: baseline; margin-top: 3px; }
+.seats { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .years { color: var(--dim); font-size: 12px; }
 
-.chamber-wrap { position: relative; margin: 16px 0 20px; }
-.chamber { display: flex; gap: 2px; height: 26px; }
-.chamber-seg {
-  border-radius: 3px; display: flex; align-items: center; justify-content: center;
-  font-size: 11px; font-weight: 700; color: #14161c; overflow: hidden;
+/* --------------------------------------------------------------- chamber */
+
+.chamber-wrap { position: relative; margin: 14px 0 22px; }
+.chamber-svg,
+.bloc-chamber-svg {
+  display: block; width: 100%; margin: 0 auto; overflow: visible;
+  /* The bench light blends with the fan, not with whatever is behind it. */
+  isolation: isolate;
 }
-.chamber-seg.empty { background: #232a36; color: var(--dim); }
-.majority-mark { position: absolute; top: -6px; bottom: -6px; border-left: 2px dashed #f2f4f8; }
-.majority-mark span {
-  position: absolute; top: -16px; left: 5px; font-size: 10px; color: var(--dim);
+.chamber-svg { max-width: 620px; }
+
+/* The wall the back row stands against. Filled from a gradient in the markup;
+   the rule is here only to keep it from taking a stroke. */
+.chamber-wall { stroke: none; pointer-events: none; }
+
+/* The step each row of benches stands on. What shows is the sliver between one
+   bench and the next, which is what makes a row read as a row. */
+.chamber-row {
+  fill: none; stroke: var(--line); stroke-width: 0.047;
+  opacity: 0.3; stroke-linecap: round;
 }
 
-.parties { display: grid; grid-template-columns: repeat(auto-fill, minmax(184px, 1fr)); gap: 9px; }
+/* The floor the benches look down into, and the rim they stop at. */
+.chamber-well { stroke: var(--line); stroke-width: 0.007; opacity: 0.9; }
+.chamber-rim {
+  fill: none; stroke: var(--line-soft); stroke-width: 0.006; opacity: 0.7;
+}
+/* Light from above, painted over the whole fan at once. */
+.bench-light { mix-blend-mode: soft-light; pointer-events: none; }
+
+/*
+ * A seat is a bench: wider across the row than it is deep, and turned to face
+ * the floor. The rotation lives on a wrapping group in the markup, because it
+ * and this animation are the same CSS property and the animation would win.
+ */
+.seat {
+  stroke: var(--bg);
+  stroke-width: 0.005;
+  animation: seat-in 0.44s cubic-bezier(0.2, 0.9, 0.3, 1) both;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes seat-in { from { opacity: 0; transform: scale(0.4); } }
+.seat.vacant { fill: var(--seat-vacant); }
+/*
+ * The government benches are lit; everyone else is merely coloured.
+ *
+ * A ring rather than a glow: an SVG drop-shadow takes its radius in user units,
+ * and in a viewBox 2.3 wide anything written in px is either invisible or a
+ * smear. The stroke is in the same units as the seat, so it is neither.
+ */
+.seat.governing { stroke: var(--accent); stroke-width: 0.012; }
+
+.majority-mark {
+  stroke: var(--text);
+  stroke-width: 0.008;
+  stroke-dasharray: 0.03 0.025;
+  opacity: 0.55;
+}
+/* A head on the rule, so the line ends at something rather than stopping. */
+.majority-pin { fill: var(--dim); opacity: 0.85; }
+/* The number the line stands for, at the end of it. */
+.majority-label {
+  fill: var(--dim);
+  font-size: 0.082px;
+  font-weight: 800;
+  letter-spacing: 0.008px;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The count stands on the floor of the house. Placed as a share of the
+   drawing's height rather than in pixels, so it stays in the well when the fan
+   is scaled down to a phone. */
+.chamber-readout {
+  position: absolute; left: 0; right: 0; bottom: 5%;
+  text-align: center; pointer-events: none;
+}
+.chamber-count {
+  font-size: 38px; font-weight: 800; line-height: 1;
+  letter-spacing: -0.04em; font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+}
+.chamber-of {
+  font-size: 11px; color: var(--dim); letter-spacing: 0.06em; margin-top: 3px;
+}
+
+/* The same fan on the setup screen, seated by politics instead of by owner. */
+.bloc-chamber { margin: 14px 0 4px; }
+.bloc-chamber-svg { max-width: 460px; }
+.bloc-seat { stroke: var(--bg); stroke-width: 0.006; }
+.bloc-legend {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 16px; margin-top: 8px;
+  font-size: 11.5px; color: var(--dim);
+}
+.bloc-key { display: inline-flex; align-items: baseline; gap: 5px; }
+.bloc-key strong {
+  color: var(--text); font-variant-numeric: tabular-nums; font-weight: 700;
+}
+.bloc-dot {
+  width: 8px; height: 8px; border-radius: 50%; align-self: center;
+}
+.bloc-key.largest { color: var(--dimmer); }
+.bloc-key.largest strong { color: var(--dim); font-weight: 650; }
+
+/* ---------------------------------------------------------- party cards */
+
+.parties { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
+/*
+ * A party card is a card: it has an edge, a light on it, and a politics.
+ *
+ * --bloc arrives from the component. The wash in the corner, the spine and the
+ * hover glow all read from it, so a card is tinted by what it believes rather
+ * than by a colour painted onto one strip of it.
+ */
 .party-card {
-  border-width: 2px; border-radius: 10px; background: var(--panel);
-  padding: 10px 11px; text-align: left; display: block; position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background:
+    radial-gradient(84% 62% at 4% 0%, color-mix(in srgb, var(--bloc, transparent) 15%, transparent), transparent 68%),
+    linear-gradient(168deg, var(--panel), var(--bg));
+  text-align: left; position: relative; padding: 0; overflow: hidden;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 26px -22px #000;
+  transition: transform 0.12s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
-.party-card.active { background: #232a38; box-shadow: 0 0 0 2px var(--gold); }
-.party-card.blocked { opacity: 0.5; }
-.party-head { display: flex; align-items: baseline; gap: 8px; }
-.party-seats { font-size: 21px; font-weight: 700; }
-.party-name { font-size: 13px; line-height: 1.2; }
-.party-sub { display: flex; justify-content: space-between; margin-top: 5px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; }
-.redline { color: var(--bad); font-size: 10.5px; margin-top: 5px; }
-.bid { margin-top: 7px; font-size: 15px; font-weight: 700; color: #3f485a; }
-.bid.on { color: var(--gold); }
+.party-card:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 16px 32px -22px color-mix(in srgb, var(--bloc, #000) 55%, #000);
+}
+.party-card.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent), 0 14px 30px -18px var(--accent);
+}
+.party-card.blocked { opacity: 0.45; }
+.party-card.pulling { opacity: 0.6; border-style: dashed; }
 
-.tray {
-  margin-top: 18px; background: var(--panel); border: 1px solid var(--line);
-  border-radius: 12px; padding: 12px;
+/* A colour down the edge for the bloc, so the board sorts itself by eye. It
+   fades out downward: a full-height bar reads as a border, a fading one as
+   light coming off the card. */
+.party-spine {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: linear-gradient(180deg, var(--bloc, var(--line)), transparent 92%);
 }
-.tray-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); margin-bottom: 9px; }
-.tray-head .warn { color: var(--gold); }
+
+.party-ribbon {
+  position: absolute; top: 10px; right: -22px;
+  transform: rotate(34deg);
+  width: 84px; text-align: center;
+  font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  color: #10131a; padding: 2px 0;
+}
+
+.party-hit {
+  display: block; width: 100%; text-align: left; background: none;
+  border: none; border-radius: 0; padding: 11px 12px 11px 14px;
+}
+.party-hit:hover { border-color: transparent; }
+.party-head { display: flex; align-items: baseline; gap: 8px; }
+.party-seats { font-size: 24px; font-weight: 800; font-variant-numeric: tabular-nums; letter-spacing: -0.03em; }
+.party-name { font-size: 13px; line-height: 1.2; }
+/*
+ * How far through a majority one list gets you.
+ *
+ * The seat count above is the fact; this is the fact in the only unit that
+ * decides anything. The track is 61 mandates wide, so two cards side by side
+ * are comparable without reading either number.
+ */
+.party-mandates {
+  height: 3px; border-radius: 2px; margin-top: 8px;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+  overflow: hidden;
+}
+.party-mandates > span {
+  display: block; height: 100%; width: var(--share, 0%);
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--bloc, var(--dim)) 55%, transparent),
+    var(--bloc, var(--dim))
+  );
+}
+
+.party-sub {
+  display: flex; justify-content: space-between; margin-top: 7px;
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
+}
+.redline { color: var(--bad); font-size: 10.5px; margin-top: 6px; }
+.party-price { display: flex; gap: 8px; align-items: baseline; margin-top: 8px; }
+.party-price .current { font-size: 13px; font-weight: 650; color: var(--dimmer); }
+.party-price .pending { font-size: 13px; font-weight: 800; color: var(--accent); }
+.party-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
+.mini {
+  font-size: 10px; padding: 2px 7px; border-radius: 10px;
+  background: var(--accent-soft); color: var(--accent);
+}
+.pull {
+  display: block; width: 100%; border: none; border-top: 1px solid var(--line-soft);
+  border-radius: 0; font-size: 11px; padding: 6px; color: var(--dim); background: #10131a;
+}
+.pull:hover { color: var(--bad); }
+
+/* ------------------------------------------------------------------ tray */
+
+/*
+ * The despatch box: everything you have to spend, on one surface.
+ *
+ * The corner brackets are the one purely decorative thing on the board. They
+ * are there because the tray is where the turn is actually made and it was
+ * reading as another panel in a stack of panels; a bracketed corner says
+ * "this is the table" in a way a heavier border does not.
+ */
+.tray {
+  position: relative;
+  margin-top: 20px;
+  background: linear-gradient(180deg, var(--panel), var(--bg));
+  border: 1px solid var(--line);
+  border-radius: 14px; padding: 16px;
+  box-shadow: 0 20px 50px -40px #000, inset 0 1px 0 rgba(255, 255, 255, 0.035);
+}
+.tray::before,
+.tray::after {
+  content: ""; position: absolute; width: 16px; height: 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent);
+  pointer-events: none;
+}
+.tray::before {
+  top: 7px; left: 7px; border-right: 0; border-bottom: 0; border-radius: 6px 0 0 0;
+}
+.tray::after {
+  bottom: 7px; right: 7px; border-left: 0; border-top: 0; border-radius: 0 0 6px 0;
+}
+.tray-head { display: flex; justify-content: space-between; font-size: 12px; color: var(--dim); margin-bottom: 11px; gap: 12px; flex-wrap: wrap; }
+.tray-head .warn { color: var(--accent); }
 .tray-head .ok { color: var(--good); }
 
-.chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { display: flex; align-items: center; gap: 7px; padding: 6px 10px; border-radius: 20px; font-size: 12px; }
-.chip.used { background: #12151c; }
-.chip-budget { font-weight: 700; font-size: 13px; min-width: 16px; text-align: right; }
-.chip-name { color: var(--dim); }
+.chips { display: flex; flex-wrap: wrap; gap: 7px; }
 
-.commit-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+/* A portfolio is money. It should look like money. */
+.chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 13px 5px 5px; border-radius: 24px;
+  background: linear-gradient(180deg, var(--panel-2), color-mix(in srgb, var(--panel-2) 70%, black));
+  font-size: 12px;
+}
+.chip:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+}
+/*
+ * The tier sets a colour and the coin does the rest, rather than each tier
+ * restating the whole face. A flat disc read as a sticker; a struck edge, a
+ * highlight up where the light is and a shadow under it read as a token you
+ * could pick up.
+ */
+.chip[data-tier="low"] .chip-coin { --coin: #7f8ea3; }
+.chip[data-tier="mid"] .chip-coin { --coin: #cf9a4b; }
+.chip[data-tier="high"] .chip-coin { --coin: var(--accent); }
+.chip-coin {
+  display: grid; place-items: center;
+  width: 26px; height: 26px; border-radius: 50%;
+  font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
+  color: #12151c;
+  border: 2px dashed rgba(0, 0, 0, 0.28);
+  background:
+    radial-gradient(circle at 34% 26%, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0) 56%),
+    linear-gradient(
+      158deg,
+      color-mix(in srgb, var(--coin, #7f8ea3) 84%, white),
+      var(--coin, #7f8ea3) 54%,
+      color-mix(in srgb, var(--coin, #7f8ea3) 76%, black)
+    );
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), inset 0 -1px 2px rgba(0, 0, 0, 0.25);
+}
+.chip-name { color: color-mix(in srgb, var(--text) 72%, var(--dim)); }
+.chip.used { background: #10131a; }
+.chip.used .chip-coin { opacity: 0.35; }
+.chip.used .chip-name { color: var(--dimmer); text-decoration: line-through; }
+.chip.spent { opacity: 0.32; cursor: not-allowed; }
+
+.commit-row { display: flex; align-items: center; gap: 12px; margin-top: 16px; flex-wrap: wrap; }
 .need { color: var(--dim); font-size: 12.5px; }
+.problem { color: var(--bad); font-size: 12.5px; }
 
 .error-toast {
   position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
   background: #3a201c; border: 1px solid var(--bad); color: #f0b3a8;
-  padding: 9px 16px; border-radius: 8px; font-size: 13px;
+  padding: 10px 16px; border-radius: 9px; font-size: 13px;
 }
 
 /* ---------------------------------------------------------------- reveal */
 
 .reveal-backdrop {
-  position: fixed; inset: 0; background: rgba(8, 10, 14, 0.78);
+  position: fixed; inset: 0; background: rgba(6, 8, 12, 0.72);
+  /* The board is still there behind the result, but it is not the thing being
+     read, so it goes out of focus rather than merely dark. */
+  backdrop-filter: blur(7px) saturate(0.85);
   display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 10;
+  animation: fade 0.18s ease both;
 }
+@keyframes fade { from { opacity: 0; } }
 .reveal {
-  background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
-  padding: 20px; width: min(620px, 100%); max-height: 84vh; overflow-y: auto;
+  background: linear-gradient(180deg, var(--panel), var(--bg));
+  border: 1px solid var(--line); border-top: 2px solid var(--accent); border-radius: 16px;
+  padding: 22px; width: min(640px, 100%); max-height: 84vh; overflow-y: auto;
+  box-shadow: 0 40px 90px -40px #000;
+  animation: rise 0.22s cubic-bezier(0.2, 0.9, 0.3, 1) both;
 }
+@keyframes rise { from { opacity: 0; transform: translateY(12px) scale(0.985); } }
 .muted { color: var(--dim); }
-.reveal-table { width: 100%; border-collapse: collapse; margin: 14px 0; font-size: 13px; }
-.reveal-table td { padding: 7px 0; border-bottom: 1px solid #222836; vertical-align: top; }
-.reveal-table tr.changed .r-name { color: var(--gold); font-weight: 600; }
-.r-name { width: 34%; }
-.r-bids { display: flex; flex-wrap: wrap; gap: 8px; }
-.r-bid { font-size: 12px; opacity: 0.6; }
-.r-bid.won { opacity: 1; font-weight: 700; }
-.r-bid.blocked { color: var(--bad); text-decoration: line-through; opacity: 0.8; }
-.r-to { text-align: right; font-size: 12px; font-weight: 600; }
+
+/*
+ * A seal on the envelope.
+ *
+ * The bids are sealed, and the one moment in the turn where that stops being
+ * true is this panel opening. The mark is struck rather than drawn: a disc with
+ * light on the top-left, the house emblem pressed into it, and the shadow of
+ * the press underneath.
+ */
+.reveal-head { display: flex; align-items: center; gap: 13px; }
+.reveal-seal {
+  flex: 0 0 auto; display: grid; place-items: center;
+  width: 42px; height: 42px; border-radius: 50%;
+  background:
+    radial-gradient(circle at 33% 27%, rgba(255, 255, 255, 0.42), rgba(255, 255, 255, 0) 58%),
+    linear-gradient(
+      154deg,
+      color-mix(in srgb, var(--accent) 80%, white),
+      var(--accent) 52%,
+      color-mix(in srgb, var(--accent) 62%, black)
+    );
+  box-shadow:
+    0 2px 5px rgba(0, 0, 0, 0.45),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, black),
+    inset 0 -2px 3px rgba(0, 0, 0, 0.3);
+}
+.reveal-seal svg { width: 26px; height: 26px; color: var(--accent-ink); opacity: 0.72; }
+
+/* The turn read back in three passes: who walked, who moved, what it cost. */
+.rev-block { margin: 16px 0; }
+.rev-block h3 {
+  margin: 0 0 8px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.11em; color: var(--dim);
+}
+.rev-line { font-size: 12.5px; color: var(--dim); padding: 5px 0; }
+
+.rev-move {
+  display: grid; grid-template-columns: 30px 1fr auto auto; gap: 10px; align-items: baseline;
+  padding: 7px 0; border-bottom: 1px solid var(--line-soft); font-size: 13px;
+}
+.rev-seats {
+  font-variant-numeric: tabular-nums; font-weight: 800; text-align: right; color: var(--text);
+}
+.rev-party { font-weight: 650; }
+.rev-arrow { font-size: 12px; white-space: nowrap; }
+.rev-cost {
+  font-variant-numeric: tabular-nums; font-size: 12px; color: var(--dim); text-align: right;
+}
+
+/* The one number that decided anything: mandates won and given up. */
+.rev-swing {
+  display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px;
+  font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
+}
+
+.rev-table { margin-bottom: 10px; }
+.rev-table-head {
+  display: flex; gap: 10px; align-items: baseline;
+  font-size: 12.5px; font-weight: 650; padding-bottom: 3px;
+}
+.rev-table-head .rev-seats { width: 30px; }
+.rev-bid {
+  display: grid; grid-template-columns: 90px 1fr auto; gap: 10px; align-items: baseline;
+  padding: 3px 0 3px 40px; font-size: 12px; opacity: 0.5;
+}
+.rev-bid.won { opacity: 1; font-weight: 700; }
+.rev-bid.refused { opacity: 0.85; }
+.rev-bid.refused .rev-what { color: var(--bad); text-decoration: line-through; }
+.rev-bid.refused .rev-cost { color: var(--bad); }
+.rev-what { color: var(--dim); }
+.rev-bid.won .rev-what { color: var(--text); }
+.rev-note { color: var(--dimmer); font-style: italic; }
 
 .cards { display: flex; flex-direction: column; gap: 9px; margin: 6px 0 16px; }
-.card { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-.card-who { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; }
-.card-title { font-weight: 650; margin-top: 3px; }
+.card {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 11px;
+  padding: 11px 13px; border-left: 3px solid var(--accent);
+}
+.card-who { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.09em; }
+.card-title { font-weight: 700; margin-top: 3px; }
 .card-text { color: var(--dim); font-size: 12.5px; margin-top: 3px; }
 
-/* party cards now carry a price and a way out */
-.party-card { padding: 0; overflow: hidden; }
-.party-hit {
-  display: block; width: 100%; text-align: left; background: none;
-  border: none; border-radius: 0; padding: 10px 11px;
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
 }
-.party-card.active { background: #232a38; box-shadow: 0 0 0 2px var(--gold); }
-.party-card.pulling { opacity: 0.6; border-style: dashed; }
-.party-price { display: flex; gap: 8px; align-items: baseline; margin-top: 7px; }
-.party-price .current { font-size: 13px; font-weight: 650; color: #5b657a; }
-.party-price .pending { font-size: 13px; font-weight: 700; color: var(--gold); }
-.party-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
-.mini {
-  font-size: 10px; padding: 2px 6px; border-radius: 10px;
-  background: #2a2312; color: #edc474;
-}
-.pull {
-  display: block; width: 100%; border: none; border-top: 1px solid var(--line);
-  border-radius: 0; font-size: 11px; padding: 5px; color: var(--dim); background: #12151c;
-}
-.problem { color: var(--bad); font-size: 12.5px; }

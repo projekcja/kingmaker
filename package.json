@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "balance": "vite-node scripts/balance.ts",
+    "playtest": "vite-node scripts/playtest.ts --"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -22,6 +24,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "typescript": "^5.7.2",
     "vite": "^6.0.7",
+    "vite-node": "^2.1.9",
     "vitest": "^2.1.8"
   },
   "allowScripts": {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { RULES_VERSION } from "./engine/types";
+import { humanPlayers, pendingSeat } from "./engine/campaign";
+import { RULES_VERSION, TERM_LENGTH } from "./engine/types";
 import type { Offer, PlayerKind, TurnResult } from "./engine/types";
 import { newGameId } from "./net/transport";
 import { transport, useGame } from "./net/useGame";
@@ -18,6 +19,8 @@ const readHash = (): string | null => {
 export const App = () => {
   const [gameId, setGameId] = useState<string | null>(readHash);
   const [reveal, setReveal] = useState<TurnResult | null>(null);
+  /** The seat the screen has been handed to, as `turn:player`. Hot seat only. */
+  const [handedTo, setHandedTo] = useState<string | null>(null);
   const game = useGame(gameId);
 
   useEffect(() => {
@@ -32,7 +35,12 @@ export const App = () => {
   }, []);
 
   const start = useCallback(
-    async (options: { humanParty: string; bots: PlayerKind[]; seed?: number }) => {
+    async (options: {
+      humanParty: string;
+      bots: PlayerKind[];
+      seed?: number;
+      chamber?: string;
+    }) => {
       const id = newGameId();
       await transport.createGame({
         id,
@@ -40,6 +48,7 @@ export const App = () => {
         rulesVersion: RULES_VERSION,
         humanParty: options.humanParty,
         bots: options.bots,
+        chamber: options.chamber,
         createdAt: Date.now(),
       });
       navigate(id);
@@ -107,9 +116,42 @@ export const App = () => {
     );
   }
 
+  // Whose move it is. With one player this is always them; with two sharing a
+  // keyboard it changes mid-turn, and the screen has to be covered in between —
+  // the offers are sealed, and a shared screen is the one place that can leak.
+  const seat = pendingSeat(state) ?? humanPlayers(state)[0] ?? null;
+  const sharing = humanPlayers(state).length > 1;
+  const token = seat ? `${state.turn}:${seat.key}` : null;
+  const covered = sharing && token !== null && handedTo !== token;
+
   return (
     <>
-      <Board key={state.turn} state={state} onCommit={(a) => void commit(a)} />
+      {covered && seat ? (
+        <div className="setup" data-phase={state.phase}>
+          <div className="tag" style={{ background: playerColour(state, seat.key) }}>
+            {state.phase === "forming"
+              ? `Week ${state.week}`
+              : `Year ${state.governmentYears + 1} of ${TERM_LENGTH}`}
+          </div>
+          <h1>{seat.name}, your move</h1>
+          <p className="lede">
+            Hand the keyboard over. Both of you commit blind, so nothing of this turn is on
+            screen until it resolves.
+          </p>
+          <div className="commit-row">
+            <button className="commit" onClick={() => setHandedTo(token)}>
+              I am leading {seat.name}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <Board
+          key={token ?? state.turn}
+          state={state}
+          seat={seat?.key}
+          onCommit={(a) => void commit(a)}
+        />
+      )}
       {game.error && <div className="error-toast">{game.error}</div>}
       {reveal && (
         <Reveal state={state} result={reveal} onClose={() => setReveal(null)} />

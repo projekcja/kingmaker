@@ -28,22 +28,31 @@ const grant = (state: GameState, partyKey: string, playerKey: string, ministries
 };
 
 describe("validation", () => {
-  it("allows up to two tables a turn and no more", () => {
+  it("allows three tables a turn and no more, with anything on each", () => {
     const state = setup();
-    const [a, b, c] = biddableParties(state);
+    const [a, b, c, d] = biddableParties(state);
+    expect(OFFERS_PER_TURN).toBe(3);
 
-    expect(validateOffer(state, "you", offer([[a.key, ["defense"]]]))).toEqual([]);
+    // What goes on a table is not capped: the whole hand on one is a legal move.
+    const everything = state.ministries.map((ministry) => ministry.key);
+    expect(validateOffer(state, "you", offer([[a.key, everything]]))).toEqual([]);
+
     expect(
-      validateOffer(state, "you", offer([[a.key, ["defense"]], [b.key, ["finance"]]])),
+      validateOffer(
+        state,
+        "you",
+        offer([[a.key, ["defense"]], [b.key, ["finance"]], [c.key, ["health"]]]),
+      ),
     ).toEqual([]);
 
+    // A fourth party is one table too many, however little is put on it.
     const tooMany = offer([
       [a.key, ["defense"]],
       [b.key, ["finance"]],
       [c.key, ["health"]],
+      [d.key, ["justice"]],
     ]);
     expect(validateOffer(state, "you", tooMany).some((p) => p.code === "too-many")).toBe(true);
-    expect(OFFERS_PER_TURN).toBe(2);
   });
 
   it("refuses to promise the same portfolio twice", () => {
@@ -246,8 +255,12 @@ describe("withdrawal", () => {
     expect(packageValue(state, target.key)).toBe(33);
 
     state.offers = { you: offer([], [target.key]) };
-    applyWithdrawals(state);
+    const withdrawals = applyWithdrawals(state);
 
+    // What was given up is reported, not only that something was.
+    expect(withdrawals).toEqual([
+      { playerKey: "you", partyKey: target.key, ministries: ["defense", "finance"] },
+    ]);
     expect(state.parties[target.key].heldBy).toBeNull();
     expect(state.parties[target.key].package).toEqual([]);
     expect(valueOf(state, freeMinistries(state, "you"))).toBe(171);

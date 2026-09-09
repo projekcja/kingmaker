@@ -2,7 +2,7 @@
  * The greedy bot.
  *
  * It picks a target coalition — the parties it already holds, then the biggest
- * ones going, until they add up to a majority — and spends its two tables
+ * ones going, until they add up to a majority — and spends its three tables
  * buying its way into it.
  *
  * Acquisition comes first and defence gets whatever table is left over. That
@@ -34,25 +34,40 @@ import {
 const BUFFER = 6;
 
 /**
+ * How far past the standing package this bot bids.
+ *
+ * A rival is bidding blind against it this same turn, so the minimum winning
+ * offer wins nothing very often. This is the dial between paying the going rate
+ * and paying to be sure, as a fraction of what the party is worth.
+ *
+ * Measured, not guessed. With three tables a week the thrifty end wins: 0.3
+ * takes greedy to 60% against random where 0.85 leaves it on 51%. Paying to be
+ * sure on the first table is paying with the second and third.
+ */
+const AGGRESSION = 0.3;
+
+/**
  * The cheapest handful of portfolios worth at least `target`.
  *
  * Small ones first, so the great offices stay in hand for the parties that will
- * actually demand them.
+ * actually demand them. With no limit on how many portfolios a table can hold,
+ * taking the small end until the price is met is both the cheapest way to reach
+ * it and the one that overshoots least.
  */
 const cheapestUpTo = (
   state: GameState,
   hand: readonly string[],
   target: number,
 ): string[] | null => {
-  const sorted = [...hand].sort(
-    (a, b) => (ministryByKey(state, a)?.budget ?? 0) - (ministryByKey(state, b)?.budget ?? 0),
-  );
+  const budget = (key: string): number => ministryByKey(state, key)?.budget ?? 0;
+  const sorted = [...hand].sort((a, b) => budget(a) - budget(b));
+
   const chosen: string[] = [];
   let total = 0;
   for (const key of sorted) {
     if (total >= target) break;
     chosen.push(key);
-    total += ministryByKey(state, key)?.budget ?? 0;
+    total += budget(key);
   }
   return total >= target ? chosen : null;
 };
@@ -93,7 +108,7 @@ export const greedyOffer = (state: GameState, playerKey: string, _rng: Rng): Off
   );
   const bids: Bid[] = [];
 
-  // A government already stands: both tables go on keeping it standing.
+  // A government already stands: every table goes on keeping it standing.
   if (blocSeats(state, playerKey) >= 61) {
     return { bids: defend(state, held, hand, OFFERS_PER_TURN), withdrawFrom: [] };
   }
@@ -111,9 +126,15 @@ export const greedyOffer = (state: GameState, playerKey: string, _rng: Rng): Off
     for (const party of targets) {
       if (party.heldBy === playerKey || taken.has(party.key)) continue;
       const share = Math.min(1, party.seats / shortfall);
-      // Beat what it is already being paid, and put a real share of the purse
-      // behind it — a rival is bidding blind against you this same turn.
-      const price = Math.max(packageValue(state, party.key) + 1, Math.ceil(budget * share * 0.85));
+      // What the party is worth: its share of the mandates still needed, priced
+      // against the whole purse. Then bid a fraction of that, but never less
+      // than it takes to beat the package the party is already sitting on.
+      const floor = packageValue(state, party.key) + 1;
+      const price = Math.max(floor, Math.ceil(budget * share * AGGRESSION));
+      // A party it cannot afford to bid properly for is one to leave alone.
+      // Falling back to the minimum that would take it looks thrifty and is
+      // fatal: the ranking below is seats per billion, so a bare-minimum bid
+      // outranks every real one and the bot spends the campaign being outbid.
       const ministries = cheapestUpTo(state, hand, price);
       if (!ministries) continue;
       const cost = valueOf(state, ministries);
@@ -131,7 +152,14 @@ export const greedyOffer = (state: GameState, playerKey: string, _rng: Rng): Off
   // A spare table is worth spending on the partner that looks cheapest to poach.
   if (bids.length > 0 && bids.length < OFFERS_PER_TURN) {
     const covered = new Set(bids.map((bid) => bid.partyKey));
-    bids.push(...defend(state, held.filter((party) => !covered.has(party.key)), hand, 1));
+    bids.push(
+      ...defend(
+        state,
+        held.filter((party) => !covered.has(party.key)),
+        hand,
+        OFFERS_PER_TURN - bids.length,
+      ),
+    );
   }
 
   if (bids.length > 0) return { bids, withdrawFrom: [] };

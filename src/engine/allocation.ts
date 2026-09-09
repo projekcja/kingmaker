@@ -1,10 +1,10 @@
 /**
  * The bidding round.
  *
- * Each player courts at most two parties a turn, with as many of their free
- * ministries as they care to put on the table. That restriction is what makes
- * the negotiation a negotiation: money is plentiful, turns are not, and a
- * coalition has to be assembled a couple of partners at a time while rivals do
+ * Each player sits down with at most three parties a turn, and puts as many of
+ * their free ministries in front of each as they care to. That restriction is
+ * what makes the negotiation a negotiation: money is plentiful, turns are not,
+ * and a coalition has to be assembled a few partners at a time while rivals do
  * the same.
  *
  * Ministries stay locked with a party for as long as it stays bought, so every
@@ -16,7 +16,7 @@
  * ideology, so the auction stays blind to it.
  */
 
-import type { GameState, Offer, PartyResult } from "./types";
+import type { GameState, Offer, PartyResult, Withdrawal } from "./types";
 import {
   OFFERS_PER_TURN,
   bidFor,
@@ -146,19 +146,24 @@ export const validateOffer = (
 export const isValidOffer = (state: GameState, playerKey: string, offer: Offer): boolean =>
   validateOffer(state, playerKey, offer).length === 0;
 
-/** Hand back everything locked with the parties a player is walking away from. */
-export const applyWithdrawals = (state: GameState): string[] => {
-  const notes: string[] = [];
+/**
+ * Hand back everything locked with the parties a player is walking away from.
+ *
+ * Returns what was given up rather than only which parties, because walking out
+ * is a move like any other and the reveal has to be able to show it.
+ */
+export const applyWithdrawals = (state: GameState): Withdrawal[] => {
+  const withdrawals: Withdrawal[] = [];
   for (const [playerKey, offer] of Object.entries(state.offers)) {
     for (const partyKey of offer.withdrawFrom) {
       const party = state.parties[partyKey];
       if (!party || party.heldBy !== playerKey) continue;
+      withdrawals.push({ playerKey, partyKey, ministries: [...party.package] });
       party.heldBy = null;
       party.package = [];
-      notes.push(partyKey);
     }
   }
-  return notes;
+  return withdrawals;
 };
 
 /**
@@ -178,6 +183,7 @@ export const resolveRound = (state: GameState): PartyResult[] => {
 
   for (const party of biddableParties(state)) {
     const bids: Record<string, number> = {};
+    const offered: Record<string, string[]> = {};
     const blocked: string[] = [];
     let courted = false;
 
@@ -187,6 +193,7 @@ export const resolveRound = (state: GameState): PartyResult[] => {
       if (!bid) continue;
       courted = true;
       const fresh = valueOf(state, bid.ministries);
+      offered[player.key] = [...bid.ministries];
       // The holder's new portfolios stack on what it is already paying.
       bids[player.key] = party.heldBy === player.key ? packageValue(state, party.key) + fresh : fresh;
     }
@@ -199,7 +206,9 @@ export const resolveRound = (state: GameState): PartyResult[] => {
     if (!courted) {
       results.push({
         partyKey: party.key,
+        seats: party.seats,
         bids: {},
+        offered: {},
         previousHolder: party.heldBy,
         newHolder: party.heldBy,
         blocked: [],
@@ -237,7 +246,9 @@ export const resolveRound = (state: GameState): PartyResult[] => {
 
     results.push({
       partyKey: party.key,
+      seats: party.seats,
       bids,
+      offered,
       previousHolder: party.heldBy,
       newHolder: winner,
       blocked,

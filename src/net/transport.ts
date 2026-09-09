@@ -24,6 +24,13 @@ export interface GameRecord {
   humanParty: string;
   /** Bot opponents, in order of the parties they take. */
   bots: PlayerKind[];
+  /**
+   * The Knesset this campaign opened on; see {@link ../engine/parties}.
+   *
+   * Optional, because campaigns saved before there was a choice did not record
+   * one, and those all opened on the default chamber.
+   */
+  chamber?: string;
   createdAt: number;
 }
 

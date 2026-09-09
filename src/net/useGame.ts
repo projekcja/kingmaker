@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { validateOffer } from "../engine/allocation";
 import type { Action } from "../engine/campaign";
+import { pendingSeat } from "../engine/campaign";
 import type { GameState, Offer } from "../engine/types";
 import { LocalTransport } from "./localTransport";
 import { ReplayError, replay } from "./replay";
@@ -69,10 +70,12 @@ export const useGame = (id: string | null): Game => {
     async (offer: Offer) => {
       if (!id || !replayed.state) return;
       const state = replayed.state;
-      const human = state.players.find((player) => player.kind === "human");
-      if (!human) return;
+      // Whoever is owed a move this turn — which with two players at one
+      // keyboard is not always the same seat.
+      const seat = pendingSeat(state);
+      if (!seat) return;
 
-      const problems = validateOffer(state, human.key, offer);
+      const problems = validateOffer(state, seat.key, offer);
       if (problems.length > 0) {
         setError(problems[0].message);
         return;
@@ -81,7 +84,7 @@ export const useGame = (id: string | null): Game => {
 
       const result = await transport.appendAction(id, actions.length, {
         type: "offer",
-        playerKey: human.key,
+        playerKey: seat.key,
         offer,
       });
       if (result === "conflict") setError("That turn was already played. Catching up…");

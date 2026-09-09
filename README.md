@@ -20,15 +20,59 @@ npm run dev      # http://localhost:5173
 npm run build      # type-check, then bundle to dist/
 npm test           # engine, bots and interface
 npm run typecheck  # tsc --noEmit
-npx vite-node scripts/balance.ts   # does the game reward skill?
+npm run balance    # does the game reward skill?
+npm run playtest   # sit language models at the table (needs OPENROUTER_API_KEY)
 ```
 
 ## The game
 
 ### The board
-The real 25th Knesset: Likud 32, Yesh Atid 24, Religious Zionism 14, National Unity 12, Shas 11,
-UTJ 7, Yisrael Beiteinu 6, Ra'am 5, Hadash-Ta'al 5, Labor 4. You pick which one to lead; rivals
-take the largest you left. Your own party's mandates always count toward your bloc.
+By default the **projected next election** — a hand-entered snapshot of published polling
+averages, and the one board in the game where no bloc is anywhere near 61: Likud 27, Bennett 2026
+25, Democrats 12, Yisrael Beiteinu 12, Otzma Yehudit 9, Shas 9, Yesh Atid 9, UTJ 7, Hadash-Ta'al 5,
+Ra'am 5. You pick which one to lead; rivals take the largest you left. Your own party's mandates
+always count toward your bloc.
+
+**Or open on any Knesset ever elected.** All twenty-five real elections are on the setup screen,
+from the first in January 1949 to the twenty-fifth in November 2022, each with the lists that
+actually ran and the seats they actually won — Mapai 46 and Mapam 19 in 1949, the Alignment on 56
+in 1969, the 48–47 deadlock of 1981, the fifteen-list Knesset of 1999.
+
+Party rosters differ genuinely between elections, so each chamber carries its own list rather than
+one shared table of seat counts. Keys are reused where the party is the same one, so Likud is
+`likud` in every chamber it appears in. Every list sums to 120, no key repeats inside a chamber,
+and nobody starts holding a majority; a test checks all three.
+
+Only the *opening* board comes from the chamber. Once a campaign is running, every election is
+re-drawn from what is standing at the time, so a chamber is the hand you are dealt rather than a
+fact the rest of the game keeps consulting.
+
+All twenty-six decide every campaign, and none is degenerate — but they are nothing like equally
+skill-rewarding, and the reason is the shape of the board rather than the era:
+
+| Board | Greedy beats random | Why |
+|---|---|---|
+| 18th (2009) | 100% | Kadima 28, Likud 27 — everything is on the market |
+| Next election (projected) | 98% | ten lists, no bloc close to 61 |
+| 25th (2022) | 98% | |
+| 15th (1999) | 99% | fifteen lists, largest only 26 |
+| 21st (2019) | 91% | 35 apiece — who draws which starts to matter |
+| 13th (1992) | 87% | |
+| 12th (1988) | 78% | |
+| 11th (1984) | 70% | 44–41, and the rest is small change |
+| 8th (1973) | 70% | Alignment 51 |
+| 10th (1981) | 68% | 48–47, only 25 mandates on the market at all |
+| 7th (1969) | 60% | the Alignment on 56 — five seats from a majority before anyone bids |
+
+The pattern is that **skill lives in the seats that are for sale**. A board where the two big lists
+start near 61 is decided mostly by who draws them; a board of ten or fifteen mid-sized lists is
+decided by how you spend. That is the game working as intended, and it makes the older Knessets a
+genuinely different exercise rather than a reskin.
+
+The projection is the one board that is somebody's estimate rather than a matter of record. It is
+frozen, not a live feed, and not a forecast; the setup screen says so in those words. It is the
+default because it makes the best board, not because it predicts anything. Edit it — and any of
+the rest — in `src/engine/parties.ts`.
 
 **Two players by default** — you and one rival. A party somebody leads is never for sale, so each
 extra rival takes seats off the market faster than it adds a contender: with two players there are
@@ -37,9 +81,26 @@ extra rival takes seats off the market faster than it adds a contender: with two
 Every player holds their own eighteen ministries, worth 1–18bn — 171bn each, every turn.
 
 ### The bidding
-Each turn you may sit down with **two parties**, and put as many portfolios in front of each as you
-like. Everyone commits at once; the offers are sealed. Each party then takes the **best offer on
-its table**, weighed against what it is already being paid.
+Each turn you may sit down with **three parties**, and put as many portfolios in front of each as
+you like. Everyone commits at once; the offers are sealed. Each party then takes the **best offer
+on its table**, weighed against what it is already being paid.
+
+The scarce thing is the diary, not the purse: what goes on a table is unlimited, but you only get
+three tables, so the decision is who is worth a week rather than how much to spend.
+
+### Elections rearrange the ballot
+Before the country votes, the lists reorganise. Two lists of the same politics announce a **joint
+run** and become one ticket; a faction **walks out** of a big list and registers on its own; a small
+list **winds itself up** rather than face the voters, its mandates going to the nearest list
+politically. About one of these happens per election.
+
+They are not free. A joint ticket carries the bigger partner's coalition agreement, so whoever had
+bought the smaller partner loses it — one of the few things that can undo a deal without the buyer
+choosing to. A list that folds takes its buyer's investment with it. A breakaway starts unaligned
+whatever its parent had agreed, which puts fresh mandates on the market that nobody has paid for.
+
+The party you lead is never merged away or wound up: a campaign cannot strand somebody with no
+party to lead.
 
 Ministries handed over stay **locked with that party for as long as it stays bought**, so every
 partner you add leaves you less to buy the next one with. Getting from 55 seats to 61 is the hard
@@ -64,20 +125,42 @@ to actually form is worth more than the same seat in one that never will, so suc
   it well-funded players can each hold part of the board with none able to afford the rest.
 - **Governing** — one turn is a year. The opposition bids to peel partners away, the prime minister
   defends, and each surviving year is banked. Drop below 61 and there is **one turn** to put it
-  back together; fail and the government falls, the Knesset is re-elected around the real baseline,
-  and the bidding starts over.
+  back together; fail and the government falls, the Knesset is re-elected, and the bidding starts
+  over.
+
+**A Knesset sits four years.** When the term is up the country votes whatever the arithmetic says,
+and a government still holding 61 is turned out with the rest. That is the clock a prime minister
+cannot bid their way out of: without it, a comfortable majority had no reason to spend another
+shekel and the opposition had no date to aim at. A term that expires goes straight to the polls —
+there is no repair turn, because the voters have arrived either way. A national emergency postpones
+the vote for as long as it holds.
 
 **An election does not tear up your agreements.** A party that keeps its place in the new Knesset
 keeps whatever it was promised and whoever it was promised to; only the arithmetic underneath moves.
 A list that falls below the threshold leaves the chamber, and the portfolios it was holding go back
 to the player who paid them.
 
+**Each election starts from the last one.** Every list swings around what it won at the previous
+vote, not around the 2022 result the game opened on, so a defeat is carried forward instead of being
+wiped clean by the next campaign. A party beaten down to five seats begins the next parliament on
+five and has to climb back. Two things follow. A list voted out of the chamber is out for good —
+nothing puts it back on the board, and a campaign ends with a median of eight parties rather than
+ten. And drift compounds: over a long campaign the seats concentrate, so the largest party runs a
+mean of 42 mandates by the end against the 32 it started with.
+
 Ten banked years, across as many governments as it takes, wins.
 
 ### The cards
-One card is drawn per player per turn, filtered to the phase in play: lists split and merge,
-members cross the floor, portfolios are invented and abolished, budgets fail, scandals break,
-emergencies freeze the politics, and parties draw red lines they will not cross.
+One card is drawn per turn, filtered to the phase in play: lists split, merge and register,
+members cross the floor, portfolios are invented, abolished and re-priced by the courts, budgets
+fail, ministers resign, partners reopen deals they have already signed, scandals break, emergencies
+freeze the politics, the Knesset votes to dissolve itself, and parties draw red lines they will not
+cross.
+
+**One card a turn, not one each.** Dealing every player in meant a three-handed game took three
+times the news, and the deck drowned out the bidding it was there to interrupt. One card is turned
+over per round, by one player picked at random — which still matters, because a red line is drawn
+against whoever turned it over.
 
 **Ideology lives here and nowhere else.** Every party carries its real bloc and a left–right
 number, and the bidding never reads either. Cards do: a red-line card records a concrete
@@ -95,11 +178,12 @@ src/engine/     the rules, with no reference to the DOM
   deck.ts         the card stack — the only consumer of ideology
   campaign.ts     setup, the turn machine, elections, the win check
   rng.ts          seeded PRNG; the cursor lives in the game state
-src/bots/       random and greedy opponents
+src/bots/       random and greedy opponents, plus the language-model seat
+  llm.ts          the briefing, and reading a reply back into a legal move
 src/net/        persistence: a campaign is a seed plus its moves
 src/ui/         the interface
 tests/          rules, bots, interface, plus a headless campaign harness
-scripts/        balance probe
+scripts/        balance probe, and the language-model playtest runner
 ```
 
 ## Persistence
@@ -116,14 +200,51 @@ document store, so pointing this at a shared backend is one more implementation 
 Saved campaigns carry a `RULES_VERSION`; retuning the rules makes old logs replay as different
 games, so a mismatch is refused rather than silently mangled.
 
+## Playtesting with language models
+
+`scripts/balance.ts` answers whether the game rewards a good algorithm. `scripts/playtest.ts`
+answers a different question: whether the rules can be picked up and played by something that has
+never seen them. It sits a model from [OpenRouter](https://openrouter.ai) in the human seat, gives
+it the briefing in `src/bots/llm.ts` and the position each turn, and nothing else — no engine
+internals, and never a rival's sealed offer.
+
+```bash
+$env:OPENROUTER_API_KEY = "sk-or-..."          # PowerShell; export on a shell
+npm run playtest -- --list-models=sonnet       # what OpenRouter is actually serving
+npm run playtest -- --models=openai/gpt-5-mini,anthropic/claude-sonnet-5 --games=2
+```
+
+Every turn is one API call and a campaign is tens of turns, so start with `--games=1` (that is
+still two campaigns, one from each end of the table). Other flags: `--opponent=random`,
+`--max-turns`, `--attempts`, `--temperature`, `--no-verdict`, `--quiet`. Reports land in
+`playtests/`, which is git-ignored.
+
+Three things come back that a bot harness cannot produce:
+
+- **Which rules get broken**, counted by validation code. A model is never allowed to play an
+  illegal move — the offer goes through the same `validateOffer` the interface uses, and the
+  complaints go back for another try — so the tally is a direct reading of which rules are hard to
+  follow from a plain description. Those are the rules the interface is probably explaining badly
+  too.
+- **What it thought it was doing**, in its own words, sampled through the campaign.
+- **Its verdict on the game**, asked at the end of a campaign it just played: which rule was
+  hardest to understand, which move was obviously right almost every turn, and the one change it
+  would make.
+
+The seat itself is pure and network-free (`src/bots/llm.ts`), so the whole loop is tested offline
+with a canned model that speaks only JSON — including a campaign that plays identically whether the
+greedy bot's move goes to the engine directly or through a round trip of model-shaped JSON.
+
 ## Balance
 
 `scripts/balance.ts` plays every seed twice with the strategies swapped between the same two seats,
 because the parties are wildly unequal and a naive comparison would mostly measure who drew Likud.
 
-Currently: **greedy beats random 79%**, every campaign reaches a winner, a campaign runs a median of
-16 turns across about three parliaments, and forming a coalition takes a median of 2 weeks — well
-inside the six-week limit, with head-to-head negotiations running to 9.
+Currently: **greedy beats random 69%**, every campaign reaches a winner, a campaign runs a median of
+19 turns across about four parliaments, and forming a coalition takes a median of 2 weeks — well
+inside the six-week limit, with head-to-head negotiations running to 19. Governments last a mean of
+2.43 years, inside the four-year term, so the term is a ceiling on the safe ones rather than the
+usual way one ends.
 
 Three findings from that probe are baked into the rules and the bot:
 
@@ -136,6 +257,36 @@ Three findings from that probe are baked into the rules and the bot:
 - **The deadline exists because the game deadlocked without it.** Three greedy players would
   stalemate for 200+ turns; with dissolution they settle inside 70. The six-week figure comes from
   Israeli practice rather than from tuning, and it happens to bite about as often as it should.
+- **The deck was the biggest thing standing between skill and winning, until the offer limit
+  changed.** Moving to one card a round cost greedy 73% to 68%, and the eleven new cards took it
+  from 68% to 62%. Several of them — a partner reopening the deal, a general strike, a minister
+  resigning, a dissolution vote — only fire at a sitting government, and the sitting government is
+  usually the better player. That rubber band is still there; it is simply no longer the loudest
+  thing in the measurement.
+- **Every extra table costs skill.** Holding the bot fixed and sweeping tables against the bot's
+  aggression, the pattern is flat and monotone: one table a turn is worth 89% to greedy, two 74%,
+  three 60%, four 57% (all at the bot's best aggression setting). A turn that can court more of the
+  board is a turn where a plan matters less, because a scattergun covers it too. Three is the
+  current setting because it plays better than it measures; two is the number to reach for if the
+  margin ever needs widening.
+- **How hard the bot bids matters as much as the rule.** At three tables, bidding 30% of what a
+  party is worth beats bidding 85% by nine points — paying to be sure on the first table is paying
+  with the second and third. An earlier version that fell back to the *minimum* winning bid when it
+  could not afford a proper one was worse still: the bot ranks candidates by mandates per billion,
+  so a bare-minimum bid outranked every real one and it spent whole campaigns being outbid.
+- **A ballot that never changes makes a long campaign repetitive.** Lists now merge, split and wind
+  up between elections, about one event per election. It is the authentic thing — Israeli lists do
+  not survive elections unchanged — and it also *raised* greedy from 60% to 69%: churn breaks up
+  entrenched positions and puts unbought mandates on the market, which a player with a plan exploits
+  better than one without.
+- **A compounding baseline is what luck costs.** Carrying each election forward from the last drops
+  greedy from 82% to 73%: a bad result now follows a player into the next parliament instead of
+  being erased, so the same skill wins less often. It also concentrates the chamber, and in about
+  one campaign in eighty leaves nobody able to reach 61 even by buying the whole board.
+- **The four-year term is a ceiling, not the usual ending.** Governments average 2.65 years, so most
+  still fall to the opposition rather than to the calendar; the term costs greedy nothing (79% to
+  82%) and buys the one thing missing from a winning position — a date on which it has to be
+  defended again.
 - **Letting agreements survive an election cost greedy its dominance**, from 93% down to 79%,
   because a lucky bloc assembled by accident now persists instead of being wiped. That is a better
   game, not a worse one: the margin is still decisive and the recovery from a bad election is real.

@@ -1,9 +1,9 @@
 /**
  * The random bot.
  *
- * Courts a couple of parties at random and throws a random handful of
- * portfolios at each. It has no plan, which is the point: it is the baseline
- * the greedy bot has to beat decisively for the game to be worth playing.
+ * Courts a few parties at random and throws a random handful of portfolios at
+ * each. It has no plan, which is the point: it is the baseline the greedy bot
+ * has to beat decisively for the game to be worth playing.
  */
 
 import type { Rng } from "../engine/rng";

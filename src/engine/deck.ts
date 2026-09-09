@@ -1,7 +1,7 @@
 /**
  * The stack of cards.
  *
- * One card is drawn per player per turn, filtered to the phase in play. The
+ * One card is drawn each turn, filtered to the phase in play. The
  * deck is the only part of the game that reads a party's politics: when a card
  * writes a red line it records a concrete party-to-party refusal, so the
  * bidding never has to consult ideology itself.
@@ -11,11 +11,21 @@
  */
 
 import { EXTRA_MINISTRIES } from "./ministries";
-import { BLOC_LABEL } from "./parties";
+import { BLOC_LABEL, ELECTORAL_THRESHOLD, MAJORITY } from "./parties";
 import type { Bloc } from "./parties";
 import type { Rng } from "./rng";
 import type { GameState, Party, Phase } from "./types";
-import { biddableParties, blocParties, blocSeats, isLedByPlayer, playerOf } from "./types";
+import { TERM_LENGTH, TheList, theList } from "./types";
+import {
+  biddableParties,
+  blocParties,
+  blocSeats,
+  clamp,
+  freeMinistries,
+  isLedByPlayer,
+  ministryByKey,
+  playerOf,
+} from "./types";
 
 export interface Card {
   id: string;
@@ -30,10 +40,26 @@ export interface Card {
   play: (state: GameState, rng: Rng, drawerKey: string) => string | null;
 }
 
-const SPLINTER_NAMES = [
+/**
+ * Names a new list can register under.
+ *
+ * Real ones, retired and available. Israeli lists recycle names constantly, so
+ * a party called Telem or Gesher appearing two parliaments after the last one
+ * folded is the authentic thing rather than a shortcut. Shared with the
+ * election code in {@link ./campaign}, which registers new lists of its own.
+ */
+export const SPLINTER_NAMES = [
   "Otzma Yehudit", "Noam", "New Hope", "Telem", "Derech Eretz",
   "Gesher", "Balad", "Tzomet", "Meretz", "Ahi",
+  "Yachad", "Zehut", "Hetz", "Am Shalem", "Kadima",
+  "Shinui", "Rafi", "Moked", "Ometz", "Morasha",
 ];
+
+/** A name nobody on the board is using yet, or null if they all are. */
+export const unusedName = (state: GameState): string | null =>
+  SPLINTER_NAMES.find(
+    (candidate) => !Object.values(state.parties).some((party) => party.name === candidate),
+  ) ?? null;
 
 const unaligned = (state: GameState): Party[] =>
   biddableParties(state).filter((party) => party.heldBy === null);
@@ -116,7 +142,70 @@ export const CARDS: Card[] = [
       const [keeper, absorbed] = rng.pick(pairs);
       keeper.seats += absorbed.seats;
       delete state.parties[absorbed.key];
-      return `The ${absorbed.name} folds into the ${keeper.name}. One list, ${keeper.seats} mandates, same ${BLOC_LABEL[keeper.bloc].toLowerCase()} politics.`;
+      return `${TheList(absorbed.name)} folds into ${theList(keeper.name)}. One list, ${keeper.seats} mandates, same ${BLOC_LABEL[keeper.bloc].toLowerCase()} politics.`;
+    },
+  },
+
+  {
+    id: "new-list",
+    title: "A new list registers",
+    phases: ["forming"],
+    weight: (state) => (donorParties(state).length >= 2 && freeName(state) !== null ? 1.5 : 0),
+    play: (state, rng) => {
+      const name = freeName(state);
+      const donors = donorParties(state);
+      if (!name || donors.length < 2) return null;
+      const [first, second] = rng.sample(donors, 2);
+
+      // Built out of other people's voters: the seats come off the two lists it
+      // was founded to replace, never out of thin air, so the chamber stays 120.
+      const fromFirst = Math.min(first.seats - 1, rng.int(2, 4));
+      const fromSecond = Math.min(second.seats - 1, rng.int(1, 3));
+      const taken = fromFirst + fromSecond;
+      if (taken < ELECTORAL_THRESHOLD) return null;
+      first.seats -= fromFirst;
+      second.seats -= fromSecond;
+
+      const key = `list-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+      state.parties[key] = {
+        key,
+        name,
+        seats: taken,
+        bloc: first.bloc,
+        leftRight: clamp(Math.round((first.leftRight + second.leftRight) / 2), -10, 10),
+        heldBy: null,
+        package: [],
+        refusals: [],
+      };
+      return `${name} registers as a new list and polls straight into the Knesset with ${taken} mandates, most of them borrowed from ${theList(first.name)} and ${theList(second.name)}.`;
+    },
+  },
+  {
+    id: "primaries",
+    title: "A party holds primaries",
+    phases: ["forming", "governing"],
+    weight: (state) =>
+      Object.values(state.parties).some((party) => party.refusals.length > 0) ? 2 : 0,
+    play: (state, rng) => {
+      const bound = Object.values(state.parties).filter((party) => party.refusals.length > 0);
+      if (bound.length === 0) return null;
+      const party = rng.pick(bound);
+      const lifted = party.refusals.length;
+      // A red line is a promise made by a leader. Change the leader and the
+      // promise goes with them, which is the only way back from one early.
+      party.refusals = [];
+      return `${party.name} holds primaries and replaces its leader. Every red line the old one drew — ${lifted} of them — dies with the leadership.`;
+    },
+  },
+  {
+    id: "presidential-extension",
+    title: "The president intervenes",
+    phases: ["forming"],
+    weight: (state) => (state.week > 1 ? 1.5 : 0),
+    play: (state) => {
+      if (state.week <= 1) return null;
+      state.week -= 1;
+      return "The president calls the party leaders in one at a time and hands back a week. The clock on forming a government moves the wrong way for once.";
     },
   },
 
@@ -131,7 +220,7 @@ export const CARDS: Card[] = [
       if (partners.length === 0) return null;
       const leaving = rng.pick(partners);
       release(leaving);
-      return `The ${leaving.name} walks out of the coalition over a cabinet row. ${leaving.seats} mandates gone.`;
+      return `${TheList(leaving.name)} walks out of the coalition over a cabinet row. ${leaving.seats} mandates gone.`;
     },
   },
   {
@@ -145,7 +234,7 @@ export const CARDS: Card[] = [
       const [first, second] = rng.sample(partners, 2);
       release(first);
       release(second);
-      return `The budget fails its second reading. The ${first.name} and the ${second.name} both leave the government.`;
+      return `The budget fails its second reading. ${TheList(first.name)} and ${theList(second.name)} both leave the government.`;
     },
   },
   {
@@ -182,7 +271,100 @@ export const CARDS: Card[] = [
       if (partners.length === 0) return null;
       const accused = rng.pick(partners);
       release(accused);
-      return `A corruption probe reaches the ${accused.name}. They resign from the coalition rather than answer for it.`;
+      return `A corruption probe reaches ${theList(accused.name)}. They resign from the coalition rather than answer for it.`;
+    },
+  },
+
+  {
+    id: "minister-resigns",
+    title: "A minister resigns",
+    phases: ["governing", "rebuilding"],
+    weight: (state) => (paidPartners(state).length > 0 ? 2.5 : 0),
+    play: (state, rng) => {
+      const partners = paidPartners(state);
+      if (partners.length === 0) return null;
+      const party = rng.pick(partners);
+
+      // The party stays bought, but the package holding it there gets lighter.
+      // That is the cheapest way anyone gets a portfolio back, and it quietly
+      // puts the partner within reach of whoever is bidding against you.
+      const surrendered = [...party.package].sort(
+        (a, b) => (ministryByKey(state, b)?.budget ?? 0) - (ministryByKey(state, a)?.budget ?? 0),
+      )[0];
+      if (!surrendered) return null;
+      party.package = party.package.filter((key) => key !== surrendered);
+      const name = ministryByKey(state, surrendered)?.name ?? surrendered;
+      return `${TheList(party.name)} minister for ${name} resigns, and the portfolio goes back to whoever paid for it. The party stays, on a cheaper package than before.`;
+    },
+  },
+  {
+    id: "partner-demands",
+    title: "A partner reopens the deal",
+    phases: ["governing"],
+    weight: (state) => (demandTargets(state).length > 0 ? 2 : 0),
+    play: (state, rng) => {
+      const targets = demandTargets(state);
+      if (targets.length === 0 || !state.primeMinister) return null;
+      const party = rng.pick(targets);
+      const pm = playerOf(state, state.primeMinister);
+      const hand = freeMinistries(state, pm.key);
+      if (hand.length === 0) return null;
+
+      // Nothing is bought once and for all. A partner that knows the government
+      // cannot survive without it comes back for more, and the price comes out
+      // of the hand the prime minister was saving for somebody else.
+      const cheapest = [...hand].sort(
+        (a, b) => (ministryByKey(state, a)?.budget ?? 0) - (ministryByKey(state, b)?.budget ?? 0),
+      )[0];
+      party.package = [...party.package, cheapest];
+      const name = ministryByKey(state, cheapest)?.name ?? cheapest;
+      return `${TheList(party.name)} reopens the coalition agreement and walks away with ${name} as well. ${pm.name} pays rather than count the votes without them.`;
+    },
+  },
+  {
+    id: "dissolution-vote",
+    title: "The Knesset votes to dissolve",
+    phases: ["governing"],
+    weight: (state) => (state.primeMinister && state.governmentYears >= 1 ? 1 : 0),
+    play: (state) => {
+      if (!state.primeMinister) return null;
+      // The term is the clock, and this card runs it out early. What follows is
+      // the ordinary end-of-term election, agreements and all.
+      state.governmentYears = TERM_LENGTH;
+      return "A dissolution bill passes its first reading and nobody in the coalition can be whipped against it. The term ends here, and the country votes.";
+    },
+  },
+  {
+    id: "general-strike",
+    title: "A general strike",
+    phases: ["governing", "rebuilding"],
+    weight: (state) =>
+      state.primeMinister && playerOf(state, state.primeMinister).yearsInPower > 0 ? 1.5 : 0,
+    play: (state) => {
+      if (!state.primeMinister) return null;
+      const pm = playerOf(state, state.primeMinister);
+      if (pm.yearsInPower <= 0) return null;
+      // The mirror of the landmark law: a year in office that buys nothing.
+      pm.yearsInPower -= 1;
+      return `The country stops for a fortnight and the government spends the year surviving it. ${pm.name} loses a year off the record.`;
+    },
+  },
+  {
+    id: "defection-to-government",
+    title: "A list joins the coalition",
+    phases: ["governing", "rebuilding"],
+    weight: (state) => (state.primeMinister && unaligned(state).length > 0 ? 1.5 : 0),
+    play: (state, rng) => {
+      if (!state.primeMinister) return null;
+      const available = unaligned(state).filter((party) => party.seats <= 8);
+      if (available.length === 0) return null;
+      const joiner = rng.pick(available);
+      const pm = playerOf(state, state.primeMinister);
+      // It costs nothing, which is the point: a small list would rather be in
+      // the room than right. It holds no package either, so it is cheap to poach
+      // straight back off them.
+      joiner.heldBy = state.primeMinister;
+      return `${TheList(joiner.name)} crosses to the government benches for a committee chair and a photograph. ${pm.name} gains ${joiner.seats} mandates and pays nothing for them.`;
     },
   },
 
@@ -198,7 +380,7 @@ export const CARDS: Card[] = [
       const [from, to] = rng.sample(parties, 2);
       const moved = moveSeats(from, to, rng.int(1, 2));
       if (moved === 0) return null;
-      return `${moved === 1 ? "A member" : `${moved} members`} of the ${from.name} cross the floor to the ${to.name}.`;
+      return `${moved === 1 ? "A member" : `${moved} members`} of ${theList(from.name)} cross the floor to ${theList(to.name)}.`;
     },
   },
   {
@@ -211,7 +393,7 @@ export const CARDS: Card[] = [
       if (held.length === 0) return null;
       const party = rng.pick(held);
       release(party);
-      return `A recording surfaces. The ${party.name} suspends its agreement and returns to the market.`;
+      return `A recording surfaces. ${TheList(party.name)} suspends its agreement and returns to the market.`;
     },
   },
   {
@@ -223,6 +405,64 @@ export const CARDS: Card[] = [
       state.phase === "forming"
         ? "A quiet week. Nothing but position papers and leaks about position papers."
         : "A quiet year. The government governs, which nobody reports.",
+  },
+
+  {
+    id: "court-ruling",
+    title: "The court revalues a portfolio",
+    phases: ["forming", "governing"],
+    weight: (state) => (state.ministries.length > 0 ? 1.5 : 0),
+    play: (state, rng) => {
+      const ministry = rng.pick(state.ministries);
+      if (!ministry) return null;
+      // Everything else on the table moves seats or parties. This is the only
+      // card that moves the money, and it moves it for everyone at once: the
+      // chip is re-priced in every hand and in every deal already built on it.
+      const swing = rng.int(2, 5) * (rng.chance(0.5) ? 1 : -1);
+      const before = ministry.budget;
+      ministry.budget = clamp(ministry.budget + swing, 1, 20);
+      if (ministry.budget === before) return null;
+      return ministry.budget > before
+        ? `A court ruling hands ${ministry.name} authority it never had. Worth ${ministry.budget}bn now, up from ${before}bn, in every hand and every deal already signed.`
+        : `${ministry.name} is stripped of half its powers. Worth ${ministry.budget}bn now, down from ${before}bn, including to whoever is already holding it.`;
+    },
+  },
+  {
+    id: "backbench-revolt",
+    title: "A backbench revolt",
+    phases: ["forming", "governing", "rebuilding"],
+    weight: (state) =>
+      biddableParties(state).filter((party) => party.seats >= 5).length > 0 ? 2 : 0,
+    play: (state, rng) => {
+      const big = biddableParties(state).filter((party) => party.seats >= 5);
+      if (big.length === 0) return null;
+      const party = rng.pick(big);
+      const rest = Object.values(state.parties).filter((other) => other.key !== party.key);
+      if (rest.length === 0) return null;
+      const moved = moveSeats(party, rng.pick(rest), rng.int(1, 3));
+      if (moved === 0) return null;
+      return `${moved} of ${theList(party.name)} refuse the whip and walk, and a rival list is happy to seat them.`;
+    },
+  },
+  {
+    id: "leader-retires",
+    title: "A leader stands down",
+    phases: ["forming", "governing"],
+    weight: (state) => (biddableParties(state).length > 0 ? 1.5 : 0),
+    play: (state, rng) => {
+      const party = rng.pick(biddableParties(state));
+      if (!party) return null;
+      const rest = Object.values(state.parties).filter((other) => other.key !== party.key);
+      if (rest.length === 0) return null;
+      const other = rng.pick(rest);
+      const rising = rng.chance(0.5);
+      const size = rng.int(1, 3);
+      const moved = rising ? moveSeats(other, party, size) : moveSeats(party, other, size);
+      if (moved === 0) return null;
+      return rising
+        ? `${TheList(party.name)} leader stands down and the successor turns out to be popular. ${moved} mandates come their way.`
+        : `${TheList(party.name)} leader stands down after thirty years, and ${moved} mandates of personal loyalty go elsewhere.`;
+    },
   },
 
   // ------------------------------------------------------------- ideological
@@ -263,7 +503,7 @@ export const CARDS: Card[] = [
         package: [],
         refusals: [],
       };
-      return `The ${party.name} splits. ${name} breaks away with ${breakaway} mandates, and sits further ${drift > 0 ? "right" : "left"} than the list it left.`;
+      return `${TheList(party.name)} splits. ${name} breaks away with ${breakaway} mandates, and sits further ${drift > 0 ? "right" : "left"} than the list it left.`;
     },
   },
   {
@@ -278,7 +518,7 @@ export const CARDS: Card[] = [
       const [refuser, target] = rng.pick(pairs);
       const turns = rng.int(3, 6);
       refuser.refusals.push({ partyKey: target.key, until: state.turn + turns });
-      return `${refuser.name} rules it out on the record: they will not sit in any government with the ${target.name}. That holds for ${turns} turns.`;
+      return `${refuser.name} rules it out on the record: they will not sit in any government with ${theList(target.name)}. That holds for ${turns} turns.`;
     },
   },
   {
@@ -352,6 +592,24 @@ const partnersOf = (state: GameState): Party[] =>
         state.primeMinister ? party.key !== playerOf(state, state.primeMinister).partyKey : false,
       )
     : [];
+
+/** Coalition partners actually holding a package worth taking apart. */
+const paidPartners = (state: GameState): Party[] =>
+  partnersOf(state).filter((party) => party.package.length > 0);
+
+/** Partners a government cannot afford to lose, which is what lets them ask. */
+const demandTargets = (state: GameState): Party[] => {
+  const pmKey = state.primeMinister;
+  if (!pmKey || blocSeats(state, pmKey) < MAJORITY) return [];
+  return partnersOf(state).filter((party) => blocSeats(state, pmKey) - party.seats < MAJORITY);
+};
+
+/** Lists big enough to donate seats to a newcomer without vanishing. */
+const donorParties = (state: GameState): Party[] =>
+  Object.values(state.parties).filter((party) => party.seats >= 6);
+
+/** A splinter name nobody on the board is using yet. */
+const freeName = (state: GameState): string | null => unusedName(state);
 
 const splitCandidates = (state: GameState): Party[] =>
   Object.values(state.parties).filter(

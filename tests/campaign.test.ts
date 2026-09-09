@@ -2,17 +2,34 @@ import { describe, expect, it } from "vitest";
 
 import { greedyOffer, randomOffer } from "../src/bots";
 import { validateOffer } from "../src/engine/allocation";
-import { applyAction, newCampaign, rollSeats, runElection, standings } from "../src/engine/campaign";
+import {
+  applyAction,
+  newCampaign,
+  pendingSeat,
+  readyToResolve,
+  rollSeats,
+  runElection,
+  standings,
+} from "../src/engine/campaign";
 import { CARDS } from "../src/engine/deck";
-import { ELECTORAL_THRESHOLD, MAJORITY, TOTAL_SEATS } from "../src/engine/parties";
+import {
+  CHAMBERS,
+  DEFAULT_CHAMBER,
+  ELECTORAL_THRESHOLD,
+  MAJORITY,
+  TOTAL_SEATS,
+  chamberById,
+} from "../src/engine/parties";
 import { Rng } from "../src/engine/rng";
 import type { GameState, Offer } from "../src/engine/types";
 import {
   FORMING_DEADLINE,
   OFFERS_PER_TURN,
+  TERM_LENGTH,
   YEARS_TO_WIN,
   biddableParties,
   blocSeats,
+  emptyOffer,
   freeMinistries,
 } from "../src/engine/types";
 import { playCampaign } from "./harness";
@@ -25,9 +42,71 @@ const seatTotal = (state: GameState): number =>
 const humanMove = (state: GameState, offer: Offer): GameState =>
   applyAction(state, { type: "offer", playerKey: "you", offer }).state;
 
+describe("the chambers a campaign can open on", () => {
+  it("seats a full Knesset in every one of them", () => {
+    for (const chamber of CHAMBERS) {
+      const total = chamber.parties.reduce((sum, profile) => sum + profile.baseSeats, 0);
+      expect(`${chamber.id}: ${total}`).toBe(`${chamber.id}: ${TOTAL_SEATS}`);
+      // Keys are how a party is followed across an election, so a repeat inside
+      // one chamber would quietly merge two lists into one.
+      const keys = chamber.parties.map((profile) => profile.key);
+      expect(new Set(keys).size).toBe(keys.length);
+      // Nobody starts already holding a majority; there would be no game.
+      expect(Math.max(...chamber.parties.map((p) => p.baseSeats))).toBeLessThan(MAJORITY);
+    }
+  });
+
+  it("opens on the chamber it was asked for, and plays out from there", () => {
+    for (const chamber of CHAMBERS) {
+      const state = newCampaign({ seed: 5, chamber: chamber.id, bots: ["greedy"] });
+      expect(Object.keys(state.parties).sort()).toEqual(
+        chamber.parties.map((profile) => profile.key).sort(),
+      );
+      expect(seatTotal(state)).toBe(TOTAL_SEATS);
+
+      // The largest list leads, and the rival takes the largest one left.
+      const ranked = [...chamber.parties].sort((a, b) => b.baseSeats - a.baseSeats);
+      expect(state.players[0].partyKey).toBe(ranked[0].key);
+      expect(state.players[1].partyKey).toBe(ranked[1].key);
+
+      const outcome = playCampaign({ seed: 5, chamber: chamber.id, maxTurns: 200 });
+      expect(seatTotal(outcome.state)).toBe(TOTAL_SEATS);
+    }
+  });
+
+  it("falls back to the largest list when the chosen party is from another Knesset", () => {
+    // Religious Zionism sat in the 25th, not the 23rd.
+    const state = newCampaign({ seed: 6, chamber: "knesset-23", humanParty: "rz" });
+    expect(state.players[0].partyKey).toBe("likud");
+    expect(state.parties.rz).toBeUndefined();
+  });
+
+  it("defaults to the projected next election when nothing is chosen", () => {
+    const asked = newCampaign({ seed: 7, chamber: DEFAULT_CHAMBER });
+    const unasked = newCampaign({ seed: 7 });
+    expect(unasked.parties).toEqual(asked.parties);
+    expect(chamberById(DEFAULT_CHAMBER).projected).toBe(true);
+  });
+
+  it("covers every election from the first to the sitting Knesset", () => {
+    const years = CHAMBERS.filter((chamber) => !chamber.projected).map((c) => c.year);
+    expect(years.length).toBe(25);
+    expect(Math.min(...years)).toBe(1949);
+    expect(Math.max(...years)).toBe(2022);
+    // Newest first, the projection ahead of them all.
+    expect(CHAMBERS[0].projected).toBe(true);
+    expect([...years].sort((a, b) => b - a)).toEqual(years);
+  });
+});
+
 describe("setup", () => {
   it("seats the human in the party they picked and bots in the largest left", () => {
-    const state = newCampaign({ seed: 1, humanParty: "shas", bots: ["greedy", "random"] });
+    const state = newCampaign({
+      seed: 1,
+      chamber: "knesset-25",
+      humanParty: "shas",
+      bots: ["greedy", "random"],
+    });
     expect(state.players[0].partyKey).toBe("shas");
     expect(state.players[0].kind).toBe("human");
     expect(state.players[1].partyKey).toBe("likud");
@@ -126,6 +205,107 @@ describe("forming a government", () => {
   });
 });
 
+describe("the term", () => {
+  /**
+   * A sworn-in government with nobody bidding against it.
+   *
+   * The auction is tested everywhere else; this block is about the calendar,
+   * so the majority is handed over rather than bought and there is no rival to
+   * take it away again.
+   */
+  const sworn = (seed: number): GameState => {
+    const state = newCampaign({ seed, humanParty: "likud", bots: [] });
+    for (const party of biddableParties(state)) {
+      if (blocSeats(state, "you") >= MAJORITY) break;
+      state.parties[party.key].heldBy = "you";
+    }
+    return humanMove(state, emptyOffer());
+  };
+
+  it("goes to the country when the term runs out, majority or not", () => {
+    let state = sworn(4242);
+    expect(state.phase).toBe("governing");
+    expect(blocSeats(state, "you")).toBeGreaterThanOrEqual(MAJORITY);
+
+    const parliament = state.parliament;
+    for (let year = 0; year < TERM_LENGTH + 2 && state.parliament === parliament; year += 1) {
+      state.emergencyUntil = 0; // the emergency card postpones a vote; not this test
+      state = humanMove(state, emptyOffer());
+    }
+
+    // Still holding 61 and turned out anyway.
+    expect(state.parliament).toBe(parliament + 1);
+    expect(state.phase).toBe("forming");
+    expect(state.primeMinister).toBeNull();
+    expect(state.governmentYears).toBe(0);
+    expect(seatTotal(state)).toBe(TOTAL_SEATS);
+    expect(state.log.some((entry) => entry.text.includes("sat its"))).toBe(true);
+  });
+
+  it("sits the whole term and not a year less", () => {
+    // The clock is set rather than counted in turns: a card can bank a year of
+    // its own, which moves the calendar too. One card a turn is the most that
+    // can land, so a government starting the turn on year zero cannot reach a
+    // four-year term by the end of it, and one starting on its last year must.
+    const early = sworn(4242);
+    early.governmentYears = 0;
+    early.emergencyUntil = 0;
+    const afterEarly = humanMove(early, emptyOffer());
+    expect(afterEarly.parliament).toBe(early.parliament);
+    expect(afterEarly.phase).not.toBe("forming");
+
+    const last = sworn(4242);
+    last.governmentYears = TERM_LENGTH - 1;
+    last.emergencyUntil = 0;
+    const afterLast = humanMove(last, emptyOffer());
+    expect(afterLast.parliament).toBe(last.parliament + 1);
+    expect(afterLast.phase).toBe("forming");
+  });
+
+  it("lets a tenth year in power beat the calendar", () => {
+    const state = sworn(4242);
+    expect(state.phase).toBe("governing");
+    state.governmentYears = TERM_LENGTH - 1;
+    state.players[0].yearsInPower = YEARS_TO_WIN - 1;
+
+    const after = humanMove(state, emptyOffer());
+
+    // The term and the tenth year land on the same turn; the record book wins.
+    expect(after.winner).toBe("you");
+    expect(after.phase).toBe("over");
+    expect(after.parliament).toBe(state.parliament);
+  });
+
+  it("postpones the vote while an emergency holds", () => {
+    const state = sworn(4242);
+    expect(state.phase).toBe("governing");
+    state.governmentYears = TERM_LENGTH;
+    state.emergencyUntil = state.turn + 5;
+
+    const after = humanMove(state, emptyOffer());
+
+    expect(after.parliament).toBe(state.parliament);
+    expect(["governing", "rebuilding"]).toContain(after.phase);
+  });
+
+  it("carries coalition agreements across the end of a term", () => {
+    let state = sworn(4242);
+    state.parties.shas.heldBy = "you";
+    state.parties.shas.package = ["defense"];
+
+    const parliament = state.parliament;
+    for (let year = 0; year < TERM_LENGTH + 2 && state.parliament === parliament; year += 1) {
+      state.emergencyUntil = 0;
+      state = humanMove(state, emptyOffer());
+    }
+    expect(state.parliament).toBe(parliament + 1);
+    if (!state.parties.shas) return; // voted out of the chamber; covered elsewhere
+
+    expect(state.parties.shas.heldBy).toBe("you");
+    expect(state.parties.shas.package).toEqual(["defense"]);
+  });
+});
+
 describe("elections", () => {
   it("re-rolls a full 120-seat Knesset around the baseline", () => {
     const rng = new Rng(31337);
@@ -145,7 +325,9 @@ describe("elections", () => {
     let state = newCampaign({ seed: 606, humanParty: "likud", bots: [] });
     const parliament = state.parliament;
 
-    for (let week = 0; week < FORMING_DEADLINE; week += 1) {
+    // The president can hand a week back, so the deadline is a floor on how
+    // long this takes rather than the exact number of turns.
+    for (let week = 0; week < FORMING_DEADLINE * 4 && state.parliament === parliament; week += 1) {
       state = humanMove(state, { bids: [], withdrawFrom: [] });
     }
 
@@ -154,6 +336,54 @@ describe("elections", () => {
     expect(state.week).toBe(1);
     expect(seatTotal(state)).toBe(TOTAL_SEATS);
     expect(state.log.some((entry) => entry.text.includes("dissolves itself"))).toBe(true);
+  });
+
+  it("swings each list around what it last won, not the opening board", () => {
+    const state = newCampaign({ seed: 909, chamber: "knesset-25", humanParty: "likud", bots: [] });
+    // Beat Labor down to a rump and take Likud off its opening 32.
+    state.parties.labor.seats = 4;
+    state.parties.likud.seats = 12;
+    state.parties["yesh-atid"].seats = 46;
+
+    // Over several elections a list drifting from 4 cannot climb back to the
+    // 24 seats the opening board would have handed it every time.
+    const rng = new Rng(909);
+    let sawLargeLabor = false;
+    for (let round = 0; round < 12; round += 1) {
+      runElection(state, rng);
+      if (!state.parties.labor) break;
+      if (state.parties.labor.seats > 20) sawLargeLabor = true;
+      expect(seatTotal(state)).toBe(TOTAL_SEATS);
+    }
+    expect(sawLargeLabor).toBe(false);
+  });
+
+  it("keeps a list invented by a split, and keeps a merged one folded", () => {
+    const state = newCampaign({ seed: 55, humanParty: "likud", bots: [] });
+    // A split card puts a party on the board that no profile knows about.
+    state.parties["split-new-list"] = {
+      key: "split-new-list",
+      name: "New List",
+      seats: 9,
+      bloc: "centre",
+      leftRight: 0,
+      heldBy: "you",
+      package: ["defense"],
+      refusals: [],
+    };
+    state.parties.likud.seats -= 9;
+    // A merger card took Labor off the board entirely.
+    delete state.parties.labor;
+
+    runElection(state, new Rng(55));
+
+    // The invented list is re-elected like any other, deal intact.
+    expect(state.parties["split-new-list"]).toBeDefined();
+    expect(state.parties["split-new-list"].heldBy).toBe("you");
+    expect(state.parties["split-new-list"].package).toEqual(["defense"]);
+    // And the merged one does not come back from the profile table.
+    expect(state.parties.labor).toBeUndefined();
+    expect(seatTotal(state)).toBe(TOTAL_SEATS);
   });
 
   it("carries coalition agreements through an election", () => {
@@ -176,8 +406,84 @@ describe("elections", () => {
     expect(state.phase).toBe("forming");
   });
 
+  it("rearranges the ballot: lists merge, split and wind up", () => {
+    // Over enough elections all three happen, and none of them ever leaves the
+    // chamber at anything other than 120.
+    const seen = { joint: 0, split: 0, fold: 0 };
+    for (const seed of SEEDS.slice(0, 20)) {
+      const state = newCampaign({ seed, chamber: "knesset-25", humanParty: "likud", bots: [] });
+      const rng = new Rng(seed);
+      for (let round = 0; round < 8; round += 1) {
+        runElection(state, rng);
+        expect(seatTotal(state)).toBe(TOTAL_SEATS);
+        // The party the player leads is never merged away or wound up.
+        expect(state.parties.likud).toBeDefined();
+      }
+      for (const entry of state.log) {
+        if (entry.text.includes("joint run")) seen.joint += 1;
+        if (entry.text.includes("register as")) seen.split += 1;
+        if (entry.text.includes("winds itself up")) seen.fold += 1;
+      }
+    }
+    expect(seen.joint).toBeGreaterThan(0);
+    expect(seen.split).toBeGreaterThan(0);
+    expect(seen.fold).toBeGreaterThan(0);
+  });
+
+  it("hands back the portfolios of a partner that merges or folds away", () => {
+    // A list bought and paid for can stop existing on the ballot, and the
+    // portfolios behind it have to come home when it does.
+    for (const seed of SEEDS.slice(0, 30)) {
+      const state = newCampaign({ seed, chamber: "knesset-24", humanParty: "likud", bots: [] });
+      for (const party of Object.values(state.parties)) {
+        if (party.key === "likud") continue;
+        party.heldBy = "you";
+        party.package = [];
+      }
+      // Everything the player holds is paid for out of one portfolio each.
+      const hand = state.ministries.map((ministry) => ministry.key);
+      Object.values(state.parties)
+        .filter((party) => party.heldBy === "you")
+        .forEach((party, index) => {
+          if (hand[index]) party.package = [hand[index]];
+        });
+
+      runElection(state, new Rng(seed));
+
+      // Nothing is locked with a party that is no longer on the board.
+      const locked = Object.values(state.parties)
+        .filter((party) => party.heldBy === "you")
+        .flatMap((party) => party.package);
+      expect(new Set(locked).size).toBe(locked.length);
+      expect(freeMinistries(state, "you").length + locked.length).toBe(state.ministries.length);
+    }
+  });
+
+  it("gives a breakaway list its own seats, unbought", () => {
+    // A split puts fresh mandates on the market: whatever the parent had agreed
+    // to, the faction that walked out has agreed to nothing.
+    let found = false;
+    for (const seed of SEEDS.slice(0, 40)) {
+      const state = newCampaign({ seed, chamber: "knesset-25", humanParty: "likud", bots: [] });
+      for (const party of Object.values(state.parties)) {
+        if (party.key !== "likud") party.heldBy = "you";
+      }
+      const rng = new Rng(seed);
+      runElection(state, rng);
+      for (const party of Object.values(state.parties)) {
+        if (!party.key.includes("-split")) continue;
+        found = true;
+        expect(party.heldBy).toBeNull();
+        expect(party.package).toEqual([]);
+        expect(party.seats).toBeGreaterThanOrEqual(ELECTORAL_THRESHOLD);
+      }
+      if (found) break;
+    }
+    expect(found).toBe(true);
+  });
+
   it("returns the portfolios of a party voted out of the Knesset", () => {
-    const state = newCampaign({ seed: 708, humanParty: "likud", bots: [] });
+    const state = newCampaign({ seed: 708, chamber: "knesset-25", humanParty: "likud", bots: [] });
     state.parties.labor.heldBy = "you";
     state.parties.labor.package = ["defense"];
     expect(freeMinistries(state, "you")).not.toContain("defense");
@@ -304,5 +610,76 @@ describe("standings", () => {
     const ranked = standings(state);
     expect(ranked[0].seats).toBeGreaterThanOrEqual(ranked[ranked.length - 1].seats);
     expect(ranked.reduce((sum, entry) => sum + entry.seats, 0)).toBeLessThanOrEqual(TOTAL_SEATS);
+  });
+});
+
+describe("two people at one keyboard", () => {
+  it("seats them both as players, and neither is for sale", () => {
+    const state = newCampaign({
+      seed: 40,
+      chamber: "knesset-25",
+      humanParty: "likud",
+      bots: ["human"],
+    });
+    expect(state.players.map((player) => player.kind)).toEqual(["human", "human"]);
+    expect(state.players[1].partyKey).toBe("yesh-atid");
+    expect(biddableParties(state).map((party) => party.key)).not.toContain("yesh-atid");
+  });
+
+  it("waits for both offers before anything resolves", () => {
+    let state = newCampaign({ seed: 41, humanParty: "likud", bots: ["human"] });
+    expect(pendingSeat(state)?.key).toBe("you");
+
+    const target = biddableParties(state)[0];
+    let step = applyAction(state, {
+      type: "offer",
+      playerKey: "you",
+      offer: { bids: [{ partyKey: target.key, ministries: ["education"] }], withdrawFrom: [] },
+    });
+    // Nothing has happened yet, and the screen now belongs to the other player.
+    expect(step.resolved).toBeNull();
+    expect(readyToResolve(step.state)).toBe(false);
+    expect(pendingSeat(step.state)?.key).toBe("bot1");
+    expect(step.state.turn).toBe(1);
+
+    step = applyAction(step.state, {
+      type: "offer",
+      playerKey: "bot1",
+      offer: { bids: [{ partyKey: target.key, ministries: ["defense"] }], withdrawFrom: [] },
+    });
+    expect(step.resolved).not.toBeNull();
+    expect(step.state.turn).toBe(2);
+    // Sealed and simultaneous: 18bn beats 17bn whichever seat moved first.
+    expect(step.state.parties[target.key].heldBy).toBe("bot1");
+
+    state = step.state;
+    expect(pendingSeat(state)?.key).toBe("you");
+  });
+
+  it("plays a whole campaign out to a winner", () => {
+    const rng = new Rng(9);
+    let state = newCampaign({ seed: 42, humanParty: "likud", bots: ["human"] });
+    for (let turn = 0; turn < 200 && state.phase !== "over"; turn += 1) {
+      for (const seat of ["you", "bot1"]) {
+        state = applyAction(state, {
+          type: "offer",
+          playerKey: seat,
+          offer: greedyOffer(state, seat, rng),
+        }).state;
+      }
+    }
+    expect(state.phase).toBe("over");
+    expect(state.winner).not.toBeNull();
+  });
+
+  it("hands the seat straight back when one of them passes", () => {
+    const state = newCampaign({ seed: 43, humanParty: "likud", bots: ["human"] });
+    const step = applyAction(state, {
+      type: "offer",
+      playerKey: "you",
+      offer: { bids: [], withdrawFrom: [] },
+    });
+    // A pass is a move: it is still the other seat next.
+    expect(pendingSeat(step.state)?.key).toBe("bot1");
   });
 });

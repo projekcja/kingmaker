@@ -29,6 +29,7 @@ export const startingState = (record: GameRecord): GameState => {
     seed: record.seed,
     humanParty: record.humanParty,
     bots: record.bots,
+    chamber: record.chamber,
   });
 };
 

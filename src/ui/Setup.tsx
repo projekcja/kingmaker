@@ -1,29 +1,56 @@
 import { useState } from "react";
+import type { CSSProperties } from "react";
 
-import { PARTY_PROFILES } from "../engine/parties";
+import { BLOC_LABEL, CHAMBERS, DEFAULT_CHAMBER, chamberById } from "../engine/parties";
 import type { PlayerKind } from "../engine/types";
 import { YEARS_TO_WIN } from "../engine/types";
+import { BlocChamber } from "./BlocChamber";
+import { Emblem } from "./Emblem";
 import { BLOC_COLOUR } from "./format";
-import { BLOC_LABEL } from "../engine/parties";
 
 interface Props {
-  onStart: (options: { humanParty: string; bots: PlayerKind[]; seed?: number }) => void;
+  onStart: (options: {
+    humanParty: string;
+    bots: PlayerKind[];
+    seed?: number;
+    chamber?: string;
+  }) => void;
 }
 
 const BOT_SETS: Array<{ label: string; bots: PlayerKind[]; note: string }> = [
   { label: "One rival", bots: ["greedy"], note: "a rival who plays to win" },
   { label: "One weak rival", bots: ["random"], note: "a rival with no plan at all" },
   { label: "Two rivals", bots: ["greedy", "random"], note: "crowded — three parties come off the market" },
+  {
+    label: "A friend, hot seat",
+    bots: ["human"],
+    note: "two of you on this one screen, taking the keyboard in turn. They lead the largest party you leave behind, and the screen is covered between moves because the offers are sealed",
+  },
 ];
 
 export const Setup = ({ onStart }: Props) => {
-  const ranked = [...PARTY_PROFILES].sort((a, b) => b.baseSeats - a.baseSeats);
+  const [chamberId, setChamberId] = useState(DEFAULT_CHAMBER);
+  const chamber = chamberById(chamberId);
+  const ranked = [...chamber.parties].sort((a, b) => b.baseSeats - a.baseSeats);
+
+  // The party is picked out of a chamber, so switching chamber has to reseat
+  // the player rather than leave them leading a list that is not on the board.
   const [party, setParty] = useState(ranked[0].key);
+  const leading = ranked.some((profile) => profile.key === party) ? party : ranked[0].key;
+
   const [botSet, setBotSet] = useState(0);
   const [seed, setSeed] = useState("");
 
+  // The list that actually formed the government after this election, if one
+  // did. Looked up rather than stored twice, so the two can never disagree.
+  const formed = chamber.parties.find((party) => party.key === chamber.outcome?.formedBy) ?? null;
+
   return (
     <div className="setup">
+      {/* The house mark, washed almost out behind the title. It is the one
+          thing on the opening screen that is decoration rather than a number,
+          and it is placed where nothing has to be read through it. */}
+      <Emblem className="setup-emblem" />
       <h1>Kingmaker</h1>
       <p className="lede">
         Sixty-one mandates buys you a government. Ten years in office wins the whole thing.
@@ -32,18 +59,82 @@ export const Setup = ({ onStart }: Props) => {
       </p>
 
       <div className="setup-block">
+        <div className="setup-label">
+          Which Knesset
+          <span className="setup-aside">
+            {chamber.name} · {chamber.date} · {chamber.parties.length} lists
+          </span>
+        </div>
+        {/* Twenty-six of them, so the ordinal and the year is all a button gets;
+            the line underneath carries whatever else there is to say. */}
+        <div className="chamber-grid">
+          {CHAMBERS.map((option) => (
+            <button
+              key={option.id}
+              className={`chamber ${chamberId === option.id ? "on" : ""} ${option.projected ? "projected" : ""}`}
+              onClick={() => setChamberId(option.id)}
+              title={`${option.name} — ${option.date}`}
+            >
+              <span className="chamber-ord">{option.label}</span>
+              <span className="chamber-year">{option.year}</span>
+            </button>
+          ))}
+        </div>
+        <BlocChamber chamber={chamber} />
+
+        <p className="hint">
+          {chamber.note}.
+          {chamber.projected && (
+            <>
+              {" "}
+              These seats are a hand-entered snapshot of published polling averages — not a
+              result, not a live feed, and not a forecast. Treat them as a plausible board, and
+              edit them in <code>src/engine/parties.ts</code> when they go stale.
+            </>
+          )}
+        </p>
+
+        {/* What the country actually did with this board, which is the only
+            benchmark the game has: you are being asked to beat it. */}
+        {chamber.outcome && (
+          <p className={`outcome ${chamber.outcome.premier ? "" : "hung"}`}>
+            <span
+              className="outcome-dot"
+              style={{ background: formed ? BLOC_COLOUR[formed.bloc] : undefined }}
+            />
+            {formed && chamber.outcome.premier ? (
+              <>
+                <strong>
+                  {chamber.outcome.premier} ({formed.name}, {formed.baseSeats})
+                </strong>{" "}
+                formed the government. {chamber.outcome.note}
+              </>
+            ) : (
+              <>
+                <strong>Nobody formed a government.</strong> {chamber.outcome.note}
+              </>
+            )}
+          </p>
+        )}
+      </div>
+
+      <div className="setup-block">
         <div className="setup-label">Lead which party</div>
         <div className="pick-grid">
           {ranked.map((profile) => (
             <button
               key={profile.key}
-              className={`pick ${party === profile.key ? "on" : ""}`}
+              className={`pick ${leading === profile.key ? "on" : ""}`}
               onClick={() => setParty(profile.key)}
             >
-              <span className="pick-seats">{profile.baseSeats}</span>
-              <span className="pick-name">{profile.name}</span>
-              <span className="pick-bloc" style={{ color: BLOC_COLOUR[profile.bloc] }}>
-                {BLOC_LABEL[profile.bloc]}
+              <span className="pick-seats" style={{ "--bloc": BLOC_COLOUR[profile.bloc] } as CSSProperties}>
+                {profile.baseSeats}
+              </span>
+              <span className="pick-body">
+                <span className="pick-name">{profile.name}</span>
+                <span className="pick-bloc" style={{ color: BLOC_COLOUR[profile.bloc] }}>
+                  {BLOC_LABEL[profile.bloc]}
+                </span>
               </span>
             </button>
           ))}
@@ -75,9 +166,10 @@ export const Setup = ({ onStart }: Props) => {
           className="commit"
           onClick={() =>
             onStart({
-              humanParty: party,
+              humanParty: leading,
               bots: BOT_SETS[botSet].bots,
               seed: seed ? Number(seed) : undefined,
+              chamber: chamberId,
             })
           }
         >

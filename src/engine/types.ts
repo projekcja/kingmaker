@@ -17,7 +17,7 @@ import type { Bloc } from "./parties";
  * whatever code is running now, so a mismatch has to be refused rather than
  * silently producing a different game.
  */
-export const RULES_VERSION = 2;
+export const RULES_VERSION = 5;
 
 export const YEARS_TO_WIN = 10;
 
@@ -34,6 +34,17 @@ export const YEARS_TO_WIN = 10;
  * election, and so is this game's.
  */
 export const FORMING_DEADLINE = 6;
+
+/**
+ * Years a Knesset sits before the country votes again.
+ *
+ * The real term, and the clock a prime minister cannot bid their way out of.
+ * Without it a government that holds 61 governs until it has won: the
+ * opposition has no date to aim at, and a comfortable majority has no reason
+ * to spend another shekel. Four years is what makes the seats bought in one
+ * parliament worth defending in the next.
+ */
+export const TERM_LENGTH = 4;
 
 export type PlayerKind = "human" | "random" | "greedy";
 
@@ -74,13 +85,14 @@ export interface Party {
 }
 
 /**
- * How many parties one player may court in a single turn.
+ * How many parties one player may sit down with in a single turn.
  *
  * This is the dial that sets the pace of the whole game. Money is plentiful;
- * turns are not, so a coalition has to be assembled a couple of partners at a
- * time while rivals do the same.
+ * turns are not, so a coalition has to be assembled a few partners at a time
+ * while rivals do the same. What goes on each table is unlimited: the scarce
+ * thing is the diary, not the purse.
  */
-export const OFFERS_PER_TURN = 2;
+export const OFFERS_PER_TURN = 3;
 
 /** One party courted, and what is being put in front of it. */
 export interface Bid {
@@ -91,7 +103,7 @@ export interface Bid {
 
 /** One turn's move. */
 export interface Offer {
-  /** Up to {@link OFFERS_PER_TURN} parties courted this turn. */
+  /** Up to {@link OFFERS_PER_TURN} parties courted this turn, with anything in hand. */
   bids: Bid[];
   /**
    * Parties abandoned this turn to free up the ministries locked with them.
@@ -132,17 +144,38 @@ export interface LogEntry {
 /** What happened to one party at the end of a turn, for the reveal. */
 export interface PartyResult {
   partyKey: string;
+  /** Mandates the party was holding when the offers were opened. */
+  seats: number;
   /** Player key -> billions offered. */
   bids: Record<string, number>;
+  /**
+   * Player key -> the portfolios that player actually put on the table.
+   *
+   * The billions in {@link bids} are what the party weighed, but they are not
+   * what the player did: a holder standing pat scores its existing package
+   * without offering anything, and two different hands can add up to the same
+   * number. The reveal has to name the portfolios or it is not showing the move.
+   */
+  offered: Record<string, string[]>;
   previousHolder: string | null;
   newHolder: string | null;
   /** Players whose winning bid was refused on a red line written by a card. */
   blocked: string[];
 }
 
+/** A player walking away from a partner, and what it freed up. */
+export interface Withdrawal {
+  playerKey: string;
+  partyKey: string;
+  /** The portfolios that went back into their hand, in time to fund this turn. */
+  ministries: string[];
+}
+
 export interface TurnResult {
   turn: number;
   parties: PartyResult[];
+  /** Partners abandoned before the offers were opened. */
+  withdrawals: Withdrawal[];
   cards: Array<{ playerKey: string; title: string; text: string }>;
 }
 
@@ -184,6 +217,23 @@ export interface GameState {
 
 export const clamp = (value: number, low: number, high: number): number =>
   Math.max(low, Math.min(high, value));
+
+/**
+ * A party's name with its article, for dropping into a sentence.
+ *
+ * Most lists take one -- "the Likud", "the Shas" -- but a few carry their own,
+ * and "the The Democrats" is how you can tell a game was written before anybody
+ * named a party that way. Chambers back to 1949 and the splinter-name pool both
+ * contain such names, so this is not a hypothetical.
+ */
+export const theList = (name: string): string =>
+  /^(the|ha)\s/i.test(name) ? name : `the ${name}`;
+
+/** The same, starting a sentence. */
+export const TheList = (name: string): string => {
+  const text = theList(name);
+  return text.charAt(0).toUpperCase() + text.slice(1);
+};
 
 export const playerOf = (state: GameState, playerKey: string): Player => {
   const player = state.players.find((candidate) => candidate.key === playerKey);

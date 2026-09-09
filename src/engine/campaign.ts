@@ -13,18 +13,29 @@
 
 import { offerFor } from "../bots";
 import { applyRound, applyWithdrawals, resolveRound } from "./allocation";
-import { drawCard, expireRefusals } from "./deck";
+import { drawCard, expireRefusals, unusedName } from "./deck";
 import { MINISTRIES } from "./ministries";
-import { ELECTORAL_THRESHOLD, MAJORITY, PARTY_PROFILES, TOTAL_SEATS } from "./parties";
+import type { PartyProfile } from "./parties";
+import {
+  ELECTORAL_THRESHOLD,
+  MAJORITY,
+  PARTY_PROFILES,
+  TOTAL_SEATS,
+  chamberById,
+} from "./parties";
 import { Rng } from "./rng";
-import type { GameState, Offer, Party, PlayerKind, TurnResult } from "./types";
+import type { GameState, Offer, Party, Player, PlayerKind, TurnResult } from "./types";
 import {
   FORMING_DEADLINE,
+  TERM_LENGTH,
   YEARS_TO_WIN,
   blocSeats,
+  TheList,
+  clamp,
   isLedByPlayer,
   packageValue,
   playerOf,
+  theList,
   valueOf,
 } from "./types";
 
@@ -34,6 +45,14 @@ export interface CampaignOptions {
   humanParty?: string;
   /** Bot opponents, in order of size after the human's pick. */
   bots?: PlayerKind[];
+  /**
+   * Which Knesset the campaign opens on; see {@link ./parties}.
+   *
+   * Only the opening board. Once a campaign is running, every election carries
+   * forward from what is standing rather than from here, so the chamber is the
+   * hand you are dealt and not a fact the rest of the game keeps consulting.
+   */
+  chamber?: string;
 }
 
 const cloneState = (state: GameState): GameState =>
@@ -49,9 +68,12 @@ const log = (state: GameState, kind: GameState["log"][number]["kind"], text: str
 // Setting up
 // ---------------------------------------------------------------------------
 
-const buildParties = (seats: Record<string, number>): Record<string, Party> => {
+const buildParties = (
+  profiles: readonly PartyProfile[],
+  seats: Record<string, number>,
+): Record<string, Party> => {
   const parties: Record<string, Party> = {};
-  for (const profile of PARTY_PROFILES) {
+  for (const profile of profiles) {
     const count = seats[profile.key] ?? 0;
     if (count <= 0) continue;
     parties[profile.key] = {
@@ -68,8 +90,10 @@ const buildParties = (seats: Record<string, number>): Record<string, Party> => {
   return parties;
 };
 
-const baselineSeats = (): Record<string, number> =>
-  Object.fromEntries(PARTY_PROFILES.map((profile) => [profile.key, profile.baseSeats]));
+const baselineSeats = (
+  profiles: readonly PartyProfile[] = PARTY_PROFILES,
+): Record<string, number> =>
+  Object.fromEntries(profiles.map((profile) => [profile.key, profile.baseSeats]));
 
 export const newCampaign = (options: CampaignOptions = {}): GameState => {
   const seed = options.seed ?? Math.floor(Math.random() * 2 ** 31);
@@ -79,11 +103,16 @@ export const newCampaign = (options: CampaignOptions = {}): GameState => {
   // than the number of contenders grows.
   const botKinds = options.bots ?? ["greedy"];
 
-  const ranked = [...PARTY_PROFILES].sort((a, b) => b.baseSeats - a.baseSeats);
-  const humanParty = options.humanParty ?? ranked[0].key;
+  const chamber = chamberById(options.chamber);
+  const ranked = [...chamber.parties].sort((a, b) => b.baseSeats - a.baseSeats);
+  // A party from another Knesset is not on this board, so fall back to the
+  // largest list rather than seating a leader with no party behind them.
+  const humanParty = ranked.some((profile) => profile.key === options.humanParty)
+    ? options.humanParty!
+    : ranked[0].key;
   const remaining = ranked.filter((profile) => profile.key !== humanParty);
 
-  const parties = buildParties(baselineSeats());
+  const parties = buildParties(chamber.parties, baselineSeats(chamber.parties));
   const players: GameState["players"] = [
     {
       key: "you",
@@ -130,7 +159,8 @@ export const newCampaign = (options: CampaignOptions = {}): GameState => {
   return state;
 };
 
-const ordinal = (value: number): string => {
+/** The suffix that makes a number an ordinal: 1st, 2nd, 21st, 111th. */
+export const ordinal = (value: number): string => {
   if (value % 100 >= 11 && value % 100 <= 13) return "th";
   return ["th", "st", "nd", "rd"][value % 10] ?? "th";
 };
@@ -153,6 +183,17 @@ export const humanPlayers = (state: GameState) =>
 /** Whether everyone who has to press a button has pressed it. */
 export const readyToResolve = (state: GameState): boolean =>
   humanPlayers(state).every((player) => state.offers[player.key] !== undefined);
+
+/**
+ * The human seat still owed a move this turn, in seating order.
+ *
+ * With one human this is always them. With two sharing a keyboard it is who
+ * should be looking at the screen right now, which is the whole of hot-seat
+ * play: offers are sealed, so the second player must not see the first one
+ * until the turn resolves.
+ */
+export const pendingSeat = (state: GameState): Player | null =>
+  humanPlayers(state).find((player) => state.offers[player.key] === undefined) ?? null;
 
 export const applyAction = (input: GameState, action: Action): ActionResult => {
   const state = cloneState(input);
@@ -179,18 +220,15 @@ const resolveTurn = (state: GameState): TurnResult => {
 
   // Anyone walking away from a partner does so before the offers are opened,
   // which is what lets those portfolios fund this turn's bid.
-  for (const [playerKey, offer] of Object.entries(state.offers)) {
-    for (const partyKey of offer.withdrawFrom) {
-      const party = state.parties[partyKey];
-      if (party?.heldBy !== playerKey) continue;
-      log(
-        state,
-        "trouble",
-        `${playerOf(state, playerKey).name} pulls out of the ${party.name}, reclaiming ${valueOf(state, party.package)}bn of portfolios.`,
-      );
-    }
+  const withdrawals = applyWithdrawals(state);
+  for (const withdrawal of withdrawals) {
+    const party = state.parties[withdrawal.partyKey];
+    log(
+      state,
+      "trouble",
+      `${playerOf(state, withdrawal.playerKey).name} pulls out of ${theList(party?.name ?? withdrawal.partyKey)}, reclaiming ${valueOf(state, withdrawal.ministries)}bn of portfolios.`,
+    );
   }
-  applyWithdrawals(state);
 
   const parties = resolveRound(state);
   applyRound(state, parties);
@@ -205,7 +243,7 @@ const resolveTurn = (state: GameState): TurnResult => {
       log(
         state,
         "deal",
-        `${winner.name} takes the ${party.name} (${party.seats})${taken} for ${packageValue(state, party.key)}bn.`,
+        `${winner.name} takes ${theList(party.name)} (${party.seats})${taken} for ${packageValue(state, party.key)}bn.`,
       );
     }
   }
@@ -216,18 +254,23 @@ const resolveTurn = (state: GameState): TurnResult => {
     if (state.primeMinister) playerOf(state, state.primeMinister).yearsInPower += 1;
   }
 
+  // One card a round, not one for each player. Dealing everybody in meant a
+  // three-handed game got three times the chaos, and the news drowned out the
+  // bidding it was supposed to interrupt. The drawer still matters -- a red
+  // line is drawn against whoever turned the card over -- so one player is
+  // picked for it rather than all of them.
   const cards: TurnResult["cards"] = [];
-  for (const player of state.players) {
-    const card = drawCard(state, rng, player.key);
-    if (!card) continue;
-    cards.push({ playerKey: player.key, title: card.title, text: card.text });
+  const drawer = rng.pick(state.players);
+  const card = drawer ? drawCard(state, rng, drawer.key) : null;
+  if (card && drawer) {
+    cards.push({ playerKey: drawer.key, title: card.title, text: card.text });
     log(state, "card", `${card.title} — ${card.text}`);
   }
 
   expireRefusals(state);
   advancePhase(state, rng);
 
-  const result: TurnResult = { turn: state.turn, parties, cards };
+  const result: TurnResult = { turn: state.turn, parties, withdrawals, cards };
   state.lastTurn = result;
   state.offers = {};
   state.turn += 1;
@@ -285,6 +328,26 @@ const advancePhase = (state: GameState, rng: Rng): void => {
     const seats = blocSeats(state, pmKey);
     const shielded = state.emergencyUntil > state.turn;
 
+    // Ten years is a career, and it beats the calendar: a prime minister who
+    // reaches it on the last year of a term goes into the record books rather
+    // than to the polls.
+    checkWin(state);
+    if (state.winner) return;
+
+    // The term runs out whatever the arithmetic says. A government still
+    // holding 61 goes to the country anyway, and one already short of it does
+    // not get its repair turn -- the voters have arrived either way.
+    if (state.governmentYears >= TERM_LENGTH && !shielded) {
+      log(
+        state,
+        "trouble",
+        `The Knesset has sat its ${TERM_LENGTH} years. The country votes.`,
+      );
+      runElection(state, rng, "term");
+      checkWin(state);
+      return;
+    }
+
     if (seats >= MAJORITY) {
       if (state.phase === "rebuilding") {
         log(state, "deal", `${playerOf(state, pmKey).name} rebuilds the majority. The government survives.`);
@@ -293,6 +356,9 @@ const advancePhase = (state: GameState, rng: Rng): void => {
       state.repairing = false;
     } else if (shielded) {
       log(state, "info", "The government is below 61, but the emergency holds it up.");
+    } else if (state.governmentYears >= TERM_LENGTH) {
+      // Only reachable while shielded, since the term is checked above.
+      log(state, "info", "The term is up, but the emergency postpones the election.");
     } else if (state.phase === "governing") {
       state.phase = "rebuilding";
       state.repairing = true;
@@ -332,19 +398,38 @@ const checkWin = (state: GameState): void => {
  * below the threshold takes its seat out of the chamber, and the portfolios it
  * was holding go back to the player who paid them.
  */
-export const runElection = (state: GameState, rng: Rng): void => {
+export type ElectionCause = "collapse" | "term";
+
+export const runElection = (
+  state: GameState,
+  rng: Rng,
+  cause: ElectionCause = "collapse",
+): void => {
   const protectedKeys = new Set(state.players.map((player) => player.partyKey));
-  const seats = rollSeats(rng, protectedKeys);
+
+  const opening =
+    cause === "term"
+      ? "The term ends and the country votes."
+      : "The government falls.";
+  log(state, "election", opening);
+
+  // The ballot is settled before the country votes: lists merge, split and wind
+  // up during the campaign, and only then are the votes counted.
+  realign(state, rng);
 
   const before = state.parties;
-  const parties = buildParties(seats);
-  for (const [key, party] of Object.entries(parties)) {
+  const seats = rollSeats(rng, protectedKeys, standingSeats(before));
+
+  // The chamber that just sat is the thing being re-elected, so every list
+  // carries its own identity through: a party invented by a split is a real
+  // party now, and one folded into another by a merger stays folded. Only the
+  // seat count is new.
+  const parties: Record<string, Party> = {};
+  for (const [key, count] of Object.entries(seats)) {
     const previous = before[key];
     if (!previous) continue;
-    party.heldBy = previous.heldBy;
-    party.package = previous.package;
     // Red lines outlive an election too; they lapse on their own timer.
-    party.refusals = previous.refusals;
+    parties[key] = { ...previous, seats: count };
   }
 
   state.parties = parties;
@@ -361,22 +446,213 @@ export const runElection = (state: GameState, rng: Rng): void => {
   log(
     state,
     "election",
-    `The government falls. The ${state.parliament}${ordinal(state.parliament)} Knesset is elected, and the bidding starts again.`,
+    `The ${state.parliament}${ordinal(state.parliament)} Knesset is elected, and the bidding starts again.`,
   );
 };
 
+// ---------------------------------------------------------------------------
+// The ballot, before the votes are counted
+// ---------------------------------------------------------------------------
+
 /**
- * A fresh result: every list swings around its baseline, anything under the
+ * One rearrangement of the ballot paper, or null if it cannot happen here.
+ *
+ * These run on the chamber that just sat, before {@link rollSeats} swings it,
+ * so the seats they move are the baseline the country then votes on. A list
+ * that folds takes its old vote share into whoever absorbed it; a breakaway
+ * starts the next election with the mandates it walked out with.
+ */
+type Realignment = (state: GameState, rng: Rng) => string | null;
+
+/** The lists the ballot can rearrange: everything nobody is leading. */
+const looseParties = (state: GameState): Party[] =>
+  Object.values(state.parties).filter((party) => !isLedByPlayer(state, party.key));
+
+/**
+ * Refusals name a party by key, so a key that stops existing has to be
+ * redirected or the red line quietly evaporates.
+ */
+const redirectRefusals = (state: GameState, from: readonly string[], to: string): void => {
+  const gone = new Set(from);
+  for (const party of Object.values(state.parties)) {
+    party.refusals = party.refusals.map((refusal) =>
+      gone.has(refusal.partyKey) ? { ...refusal, until: refusal.until, partyKey: to } : refusal,
+    );
+  }
+};
+
+/**
+ * Two lists of the same politics run on a joint ticket.
+ *
+ * The bigger partner's coalition agreement carries: it is their list the other
+ * one joined. Whoever had bought the smaller partner loses it, and gets the
+ * portfolios back — a merger is one of the few things that can undo a deal
+ * without the buyer choosing to.
+ */
+const jointTicket: Realignment = (state, rng) => {
+  const pool = looseParties(state);
+  const pairs: Array<[Party, Party]> = [];
+  for (const a of pool) {
+    for (const b of pool) {
+      if (a.key === b.key || a.bloc !== b.bloc) continue;
+      if (a.seats > b.seats || (a.seats === b.seats && a.key < b.key)) pairs.push([a, b]);
+    }
+  }
+  if (pairs.length === 0) return null;
+
+  const [big, small] = rng.pick(pairs);
+  const key = `${big.key}+${small.key}`;
+  if (state.parties[key]) return null;
+
+  // Hyphenating is how these are really named, until the name gets silly and
+  // the joint list registers under something new instead.
+  const hyphenated = `${big.name}-${small.name}`;
+  const fresh = unusedName(state);
+  const name = hyphenated.length <= 30 || !fresh ? hyphenated : fresh;
+  const total = big.seats + small.seats;
+
+  const lost = small.heldBy && small.heldBy !== big.heldBy ? small.heldBy : null;
+  state.parties[key] = {
+    key,
+    name,
+    seats: total,
+    bloc: big.bloc,
+    leftRight: Math.round((big.leftRight * big.seats + small.leftRight * small.seats) / total),
+    heldBy: big.heldBy,
+    package: [...big.package],
+    // A red line drawn against either partner sticks to the joint ticket.
+    refusals: [...big.refusals, ...small.refusals],
+  };
+  delete state.parties[big.key];
+  delete state.parties[small.key];
+  redirectRefusals(state, [big.key, small.key], key);
+
+  const cost = lost
+    ? ` ${playerOf(state, lost).name} loses ${theList(small.name)} and the portfolios that were holding it.`
+    : "";
+  return `${TheList(big.name)} and ${theList(small.name)} announce a joint run as ${theList(name)}, ${total} mandates on one ticket.${cost}`;
+};
+
+/**
+ * A faction walks out of a large list and registers on its own.
+ *
+ * The new list starts unaligned whatever the parent had agreed, which is what
+ * makes a split worth watching: it puts fresh mandates on the market that
+ * nobody has paid for yet.
+ */
+const breakaway: Realignment = (state, rng) => {
+  const name = unusedName(state);
+  const parents = looseParties(state).filter(
+    (party) => party.seats >= ELECTORAL_THRESHOLD * 2 + 2,
+  );
+  if (!name || parents.length === 0) return null;
+
+  const parent = rng.pick(parents);
+  const most = parent.seats - ELECTORAL_THRESHOLD;
+  const taken = Math.min(most, rng.int(ELECTORAL_THRESHOLD, ELECTORAL_THRESHOLD + 3));
+  if (taken < ELECTORAL_THRESHOLD) return null;
+
+  let key = `${parent.key}-split`;
+  for (let n = 2; state.parties[key]; n += 1) key = `${parent.key}-split${n}`;
+
+  parent.seats -= taken;
+  state.parties[key] = {
+    key,
+    name,
+    seats: taken,
+    bloc: parent.bloc,
+    leftRight: clamp(parent.leftRight + (rng.chance(0.5) ? 2 : -2), -10, 10),
+    heldBy: null,
+    package: [],
+    refusals: [],
+  };
+  return `${taken} of ${theList(parent.name)} walk out over the leadership and register as ${theList(name)}. ${TheList(parent.name)} goes into the election on ${parent.seats}.`;
+};
+
+/**
+ * A small list gives up and does not run again.
+ *
+ * Its voters go somewhere, so the seats go to the nearest list politically
+ * rather than out of the chamber. Anyone who had bought it loses it.
+ */
+const windUp: Realignment = (state, rng) => {
+  const going = looseParties(state).filter((party) => party.seats <= ELECTORAL_THRESHOLD + 2);
+  if (going.length === 0) return null;
+  const folding = rng.pick(going);
+
+  const rest = Object.values(state.parties).filter((party) => party.key !== folding.key);
+  if (rest.length === 0) return null;
+  const sameBloc = rest.filter((party) => party.bloc === folding.bloc);
+  const heir = rng.pick(sameBloc.length > 0 ? sameBloc : rest);
+
+  const buyer = folding.heldBy;
+  heir.seats += folding.seats;
+  delete state.parties[folding.key];
+  redirectRefusals(state, [folding.key], heir.key);
+
+  const cost = buyer
+    ? ` ${playerOf(state, buyer).name} paid for a list that no longer exists, and the portfolios come home.`
+    : "";
+  return `${TheList(folding.name)} winds itself up rather than face the voters. Its ${folding.seats} mandates go to ${theList(heir.name)}.${cost}`;
+};
+
+/**
+ * Rearrange the ballot for this election.
+ *
+ * Israeli lists do not survive elections unchanged: something merges, splits or
+ * folds nearly every time. Without this the board was a fixed cast of parties
+ * whose numbers moved, which made a long campaign repetitive — you learned the
+ * ten lists once and they were the same ten in the sixth parliament.
+ *
+ * Player-led parties are left alone. A campaign cannot strand somebody with no
+ * party to lead, and a leader whose own list folds under them has had the game
+ * taken away rather than made harder.
+ */
+const realign = (state: GameState, rng: Rng): void => {
+  const moves: Realignment[] = [jointTicket, breakaway, windUp];
+  // Most elections rearrange the ballot once, some twice, and a quiet one not
+  // at all. More than that and a campaign stops being about the same country.
+  const count = rng.chance(0.25) ? 0 : rng.chance(0.72) ? 1 : 2;
+
+  for (let event = 0; event < count; event += 1) {
+    for (const move of rng.sample(moves, moves.length)) {
+      const note = move(state, rng);
+      if (note) {
+        log(state, "election", note);
+        break;
+      }
+    }
+  }
+};
+
+/** What a chamber is holding now, as the baseline for the next election. */
+const standingSeats = (parties: Record<string, Party>): Record<string, number> =>
+  Object.fromEntries(Object.values(parties).map((party) => [party.key, party.seats]));
+
+/**
+ * A fresh result: every list swings around what it last won, anything under the
  * threshold drops out, and the survivors are scaled back to 120.
+ *
+ * The baseline is the chamber that just sat, not the one the game opened on, so
+ * a defeat is carried into the next parliament instead of being wiped by the
+ * next vote. A list beaten down to five seats starts the next campaign from
+ * five. The cost is that drift compounds, and a party voted out is out for
+ * good: nothing puts it back on the board.
  *
  * The parties players lead always survive — a campaign cannot strand somebody
  * with no party to lead.
  */
-export const rollSeats = (rng: Rng, protectedKeys: Set<string>): Record<string, number> => {
-  const weights = PARTY_PROFILES.map((profile) => ({
-    key: profile.key,
-    weight: profile.baseSeats * rng.range(0.6, 1.45),
-  }));
+export const rollSeats = (
+  rng: Rng,
+  protectedKeys: Set<string>,
+  baseline: Record<string, number> = baselineSeats(),
+): Record<string, number> => {
+  const weights = Object.entries(baseline)
+    .filter(([, seats]) => seats > 0)
+    .map(([key, seats]) => ({
+      key,
+      weight: seats * rng.range(0.6, 1.45),
+    }));
 
   const total = weights.reduce((sum, entry) => sum + entry.weight, 0);
   const survivors = weights.filter(
