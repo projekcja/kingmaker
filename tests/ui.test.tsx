@@ -55,7 +55,7 @@ const playTurns = (state: GameState, count: number): GameState => {
 describe("setup screen", () => {
   it("offers every real party to lead", () => {
     const html = renderToString(<Setup onStart={noop} />);
-    expect(html).toContain("Kingmaker");
+    expect(html).toContain("61");
     for (const profile of chamberById(DEFAULT_CHAMBER).parties) {
       expect(html).toContain(escapeHtml(profile.name));
     }

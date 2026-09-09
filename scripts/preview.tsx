@@ -50,7 +50,7 @@ const panel = (title: string, body: string) =>
 
 const out = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" />
-<title>Kingmaker — screens</title>
+<title>61 — screens</title>
 <style>${css}
 .preview-label {
   font: 700 10px/1 "Segoe UI", system-ui, sans-serif; letter-spacing: 0.16em;

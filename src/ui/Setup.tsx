@@ -69,7 +69,7 @@ export const Setup = ({ onStart, chamber: opening = DEFAULT_CHAMBER, unlocked = 
           thing on the opening screen that is decoration rather than a number,
           and it is placed where nothing has to be read through it. */}
       <Emblem className="setup-emblem" />
-      <h1>Kingmaker</h1>
+      <h1>61</h1>
       <p className="lede">
         Sixty-one mandates buys you a government. Ten years in office wins the whole thing.
         Every week you can sit down with <b>three parties</b> and put as much of your

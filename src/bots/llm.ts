@@ -35,7 +35,7 @@ import {
 } from "../engine/types";
 
 /** The rules, as short as they will go and still be playable. */
-export const RULES_BRIEF = `You are playing Kingmaker, a game about forming Israeli coalition governments.
+export const RULES_BRIEF = `You are playing 61, a game about forming Israeli coalition governments.
 
 THE BOARD
 - The Knesset has 120 mandates. ${MAJORITY} of them form a government.

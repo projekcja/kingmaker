@@ -92,8 +92,8 @@ Two things that cost real time in this session, on this machine:
   with `RenderCompositorSWGL failed mapping default framebuffer` and writes no
   file, with or without `--window-size`, a fresh profile, or acceleration
   disabled. Firefox has to be checked by opening a real window.
-- **Git Bash rewrites leading-slash arguments.** `--base=/kingmaker/` reaches
-  Vite as `/Program Files/Git/kingmaker/`. Use PowerShell for anything passing a
+- **Git Bash rewrites leading-slash arguments.** `--base=/61/` reaches
+  Vite as `/Program Files/Git/61/`. Use PowerShell for anything passing a
   path-shaped flag; the Linux CI runner is unaffected.
 
 `scripts/preview.tsx` renders every screen to one contact sheet, which is the
@@ -108,7 +108,7 @@ them:
 - **CI** runs typecheck, the full suite and a build on every push and pull
   request.
 - **Pages** re-runs typecheck and the suite *before* publishing, so a commit that
-  is red cannot reach https://projekcja.github.io/kingmaker/ even if it is on
+  is red cannot reach https://projekcja.github.io/61/ even if it is on
   `main`.
 
 Tests written but not run locally have twice gone green in CI on the first try;

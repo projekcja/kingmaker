@@ -13,10 +13,11 @@
  */
 
 import type { Action } from "../engine/campaign";
+import { PREFIX } from "./storage";
 import type { AppendResult, GameRecord, Transport } from "./transport";
 
-const RECORD_PREFIX = "km:game:";
-const CHANNEL = "kingmaker";
+const RECORD_PREFIX = `${PREFIX}game:`;
+const CHANNEL = "61";
 
 const recordKey = (id: string) => `${RECORD_PREFIX}${id}`;
 const actionKey = (id: string, index: number) => `${RECORD_PREFIX}${id}:action:${index}`;

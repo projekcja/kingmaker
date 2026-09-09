@@ -7,6 +7,7 @@
  * track.
  */
 
+import { PREFIX } from "../net/storage";
 import type { GameState, TurnResult } from "../engine/types";
 import { TERM_LENGTH, YEARS_TO_WIN } from "../engine/types";
 
@@ -72,7 +73,7 @@ export const unlockedBy = (params: {
   return unlocked;
 };
 
-const STORAGE_KEY = "km:achievements";
+const STORAGE_KEY = `${PREFIX}achievements`;
 
 /** Every trophy this browser has ever earned, across every campaign. */
 export const loadUnlocked = (): Set<string> => {

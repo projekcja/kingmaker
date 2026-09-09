@@ -121,7 +121,7 @@ const complete = async (
       headers: {
         Authorization: `Bearer ${API_KEY}`,
         "Content-Type": "application/json",
-        "X-Title": "Kingmaker playtest",
+        "X-Title": "61 playtest",
       },
       body: JSON.stringify({
         model,

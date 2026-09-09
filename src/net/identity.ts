@@ -7,8 +7,10 @@
  * saved games.
  */
 
-const ID_KEY = "km:playerId";
-const NAME_KEY = "km:playerName";
+import { PREFIX } from "./storage";
+
+const ID_KEY = `${PREFIX}playerId`;
+const NAME_KEY = `${PREFIX}playerName`;
 
 const HANDLES = [
   "Formateur", "Whip", "Backbencher", "Speaker", "Broker", "Deputy",
