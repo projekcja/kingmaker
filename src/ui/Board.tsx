@@ -108,6 +108,40 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
   const courting = booked.length;
   const diaryFull = courting >= OFFERS_PER_TURN;
 
+  /**
+   * The board divided the way the player reads it: your side, their side, and
+   * the lists still on the market.
+   *
+   * Ownership was on the cards already — a ribbon, a border colour, a line of
+   * small caps — but it was something you checked one card at a time. It is the
+   * first question anybody asks of the board, so it is now where a card sits
+   * rather than what a card says, and "am I short" is answered by looking at one
+   * heading instead of by adding up.
+   */
+  const zones = [
+    {
+      side: "mine",
+      title: "Yours",
+      empty: "You hold nobody yet.",
+      colour: playerColour(state, human.key),
+      parties: targets.filter((party) => party.heldBy === human.key),
+    },
+    {
+      side: "theirs",
+      title: "Theirs",
+      empty: "Your rivals hold nobody.",
+      colour: undefined,
+      parties: targets.filter((party) => party.heldBy && party.heldBy !== human.key),
+    },
+    {
+      side: "open",
+      title: "Unaligned",
+      empty: "Every list is spoken for.",
+      colour: undefined,
+      parties: targets.filter((party) => !party.heldBy),
+    },
+  ];
+
   const toggleMinistry = (key: string) => {
     setBids((current) => {
       const next: Record<string, string[]> = {};
@@ -309,8 +343,25 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
         <div className="board-main">
           <Chamber state={state} />
 
-        <div className="parties" onKeyDown={walk(".party-hit")}>
-          {targets.map((party) => {
+        {/* `data-zone` rather than `data-side`: [data-side] already means which
+            bench you sit on, and swings the whole palette when it changes. */}
+        <div className="party-zones" onKeyDown={walk(".party-hit")}>
+          {zones.map((zone) => (
+            <section key={zone.side} className="zone" data-zone={zone.side}>
+              <div className="zone-head">
+                <span className="zone-title" style={zone.colour ? { color: zone.colour } : undefined}>
+                  {zone.title}
+                </span>
+                <span className="zone-rule" aria-hidden="true" />
+                <span className="zone-count">
+                  {`${zone.parties.reduce((sum, party) => sum + party.seats, 0)} seats`}
+                </span>
+              </div>
+              {zone.parties.length === 0 ? (
+                <p className="zone-empty">{zone.empty}</p>
+              ) : (
+                <div className="parties">
+          {zone.parties.map((party) => {
             const mine = party.heldBy === human.key;
             const pulling = withdrawFrom.includes(party.key);
             const pending = bids[party.key] ?? [];
@@ -363,14 +414,6 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
                 }}
               >
                 <span className="party-spine" />
-                {party.heldBy && (
-                  <span
-                    className={`party-ribbon ${mine ? "mine" : ""}`}
-                    style={{ background: playerColour(state, party.heldBy) }}
-                  >
-                    {mine ? "yours" : "bought"}
-                  </span>
-                )}
                 <button
                   className="party-hit"
                   aria-pressed={active === party.key}
@@ -399,9 +442,13 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
                     <span className="bloc" style={{ color: BLOC_COLOUR[party.bloc] }}>
                       {BLOC_LABEL[party.bloc]}
                     </span>
-                    <span className="holder" style={{ color: playerColour(state, party.heldBy) }}>
-                      {party.heldBy ? playerName(state, party.heldBy) : "unaligned"}
-                    </span>
+                    {/* Which rival, not whether one — the zone above the card
+                        has already said that much. */}
+                    {party.heldBy && !mine && (
+                      <span className="holder" style={{ color: playerColour(state, party.heldBy) }}>
+                        {playerName(state, party.heldBy)}
+                      </span>
+                    )}
                   </div>
 
                   {blocked.length > 0 && (
@@ -465,6 +512,10 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
               </div>
             );
           })}
+                </div>
+              )}
+            </section>
+          ))}
         </div>
 
         <div className="tray" ref={trayRef}>
