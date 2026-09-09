@@ -137,6 +137,18 @@ export type LogKind = "info" | "card" | "deal" | "trouble" | "election";
 
 export interface LogEntry {
   turn: number;
+  /**
+   * The parliament this happened in.
+   *
+   * Recorded rather than worked out afterwards. A campaign runs through several
+   * Knessets and the turn counter never restarts, so a bare turn number cannot
+   * say which one an entry belongs to; and reconstructing it by scanning for
+   * election lines would mean the history is only as reliable as the wording of
+   * those lines. An election writes its opening line under the parliament that
+   * fell and its closing line under the one just elected, which is where a
+   * reader would put them.
+   */
+  parliament: number;
   kind: LogKind;
   text: string;
 }

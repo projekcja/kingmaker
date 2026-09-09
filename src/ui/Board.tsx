@@ -27,8 +27,8 @@ interface Props {
   busy?: boolean;
   /** Which seat is looking. Defaults to the first human, for a solo campaign. */
   seat?: string;
-  /** Reopen a report the side panel is summarising. */
-  onOpenReport?: (kind: "turn" | "election") => void;
+  /** Open a fuller account from the side panel. */
+  onOpenReport?: (kind: "turn" | "election" | "history") => void;
 }
 
 /**

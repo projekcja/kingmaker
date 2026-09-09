@@ -1128,3 +1128,68 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   .diary-slots { grid-template-columns: minmax(0, 1fr); }
   .diary-slot { min-height: 0; }
 }
+
+/* ---------------------------------------------------------------- history */
+
+/*
+ * The campaign, read back.
+ *
+ * Wider than the other two panels: these are sentences rather than rows of
+ * numbers, and a narrow measure turns a four-parliament campaign into a very
+ * long thin column.
+ */
+.reveal.history { width: min(760px, 100%); }
+
+.sitting { margin: 18px 0; }
+.sitting-head {
+  display: flex; align-items: baseline; gap: 9px;
+  margin: 0 0 8px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+  color: var(--text);
+}
+.sitting-now {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase;
+  color: var(--accent-ink); background: var(--accent);
+  padding: 2px 7px; border-radius: 4px;
+}
+
+.log { display: flex; flex-direction: column; }
+/*
+ * One event to a line: when it happened, what kind of thing it was, and what
+ * it was. The kind is a word rather than only a colour, so the margin still
+ * says "trouble" when the colour cannot be told from "deal".
+ */
+.log-line {
+  display: grid; grid-template-columns: 26px 56px minmax(0, 1fr);
+  gap: 10px; align-items: baseline;
+  padding: 5px 0;
+  font-size: 12.5px; line-height: 1.5;
+  border-bottom: 1px solid var(--line-soft);
+}
+.log-line:last-child { border-bottom: none; }
+.log-turn {
+  color: var(--dimmer); font-variant-numeric: tabular-nums;
+  font-size: 11px; text-align: right;
+}
+.log-kind {
+  font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--dimmer);
+}
+.log-text { color: var(--dim); }
+
+/* The four things worth picking out of a long campaign at a glance. A deal is
+   the good news, trouble is the bad, an election redraws everything, and a card
+   is the interruption; a plain note stays in the margin colour. */
+.log-line.deal .log-kind { color: var(--good); }
+.log-line.deal .log-text { color: var(--text); }
+.log-line.trouble .log-kind { color: var(--bad); }
+.log-line.trouble .log-text { color: var(--text); }
+.log-line.election .log-kind { color: var(--accent); }
+.log-line.election .log-text { color: var(--text); }
+.log-line.card .log-kind { color: var(--dim); }
+
+@media (max-width: 560px) {
+  .log-line { grid-template-columns: 22px minmax(0, 1fr); }
+  .log-kind { display: none; }
+}

@@ -797,3 +797,44 @@ describe("what an election reports back", () => {
     expect(seen).toBeGreaterThan(0);
   });
 });
+
+describe("the campaign log", () => {
+  it("stamps every entry with the parliament it happened in", () => {
+    const outcome = playCampaign({ seed: 88, maxTurns: 200 });
+    const state = outcome.state;
+    expect(state.log.length).toBeGreaterThan(0);
+
+    let highest = 0;
+    for (const entry of state.log) {
+      expect(entry.parliament).toBeGreaterThanOrEqual(1);
+      expect(entry.parliament).toBeLessThanOrEqual(state.parliament);
+      // A parliament is only ever left forwards, so the log is already grouped:
+      // the history view has to collect runs rather than decide boundaries.
+      expect(entry.parliament).toBeGreaterThanOrEqual(highest);
+      highest = entry.parliament;
+    }
+    expect(highest).toBe(state.parliament);
+  });
+
+  it("splits an election turn between the Knesset that fell and the one elected", () => {
+    const outcome = playCampaign({ seed: 91, maxTurns: 200 });
+    const state = outcome.state;
+    if (state.parliament < 2) return;
+
+    // The turn the country votes writes its opening line under the parliament
+    // that fell and its closing line under the one just elected -- which is
+    // where a reader would put them, and it is why the field is recorded rather
+    // than worked out from the turn number afterwards.
+    const votingTurns = new Set(
+      state.log.filter((entry) => entry.kind === "election").map((entry) => entry.turn),
+    );
+    expect(votingTurns.size).toBeGreaterThan(0);
+
+    let split = 0;
+    for (const turn of votingTurns) {
+      const onThatTurn = state.log.filter((entry) => entry.turn === turn);
+      if (new Set(onThatTurn.map((entry) => entry.parliament)).size > 1) split += 1;
+    }
+    expect(split).toBeGreaterThan(0);
+  });
+});

@@ -18,8 +18,8 @@ import { playerColour, playerName } from "./format";
 
 interface Props {
   state: GameState;
-  /** Reopen the full report for whichever of the two is being shown. */
-  onOpen: (kind: "turn" | "election") => void;
+  /** Open a fuller account: this turn, the last election, or the campaign. */
+  onOpen: (kind: "turn" | "election" | "history") => void;
 }
 
 export const Dispatch = ({ state, onOpen }: Props) => {
@@ -116,6 +116,9 @@ export const Dispatch = ({ state, onOpen }: Props) => {
         <button className="ghost dispatch-more" onClick={() => onOpen("election")}>
           The full result
         </button>
+        <button className="ghost dispatch-back" onClick={() => onOpen("history")}>
+          The campaign so far
+        </button>
       </aside>
     );
   }
@@ -195,6 +198,9 @@ export const Dispatch = ({ state, onOpen }: Props) => {
             : "The last election"}
         </button>
       )}
+      <button className="ghost dispatch-back" onClick={() => onOpen("history")}>
+        The campaign so far
+      </button>
     </aside>
   );
 };

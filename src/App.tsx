@@ -7,6 +7,7 @@ import { newGameId } from "./net/transport";
 import { transport, useGame } from "./net/useGame";
 import { Board } from "./ui/Board";
 import { ElectionReport } from "./ui/ElectionReport";
+import { History } from "./ui/History";
 import { playerColour } from "./ui/format";
 import { currentElection, currentReveal } from "./ui/reports";
 import { Reveal } from "./ui/Reveal";
@@ -31,6 +32,14 @@ export const App = () => {
    * every time they reopen the reveal from the side panel.
    */
   const [seenElection, setSeenElection] = useState<number | null>(null);
+  /**
+   * The campaign history, which is only ever opened deliberately.
+   *
+   * Unlike the other two it is never pushed at the player, so it needs no
+   * guard against belonging to a previous campaign — it is read straight off
+   * whatever state is on screen, and the reset below closes it.
+   */
+  const [history, setHistory] = useState(false);
   /** The seat the screen has been handed to, as `turn:player`. Hot seat only. */
   const [handedTo, setHandedTo] = useState<string | null>(null);
   const game = useGame(gameId);
@@ -84,6 +93,7 @@ export const App = () => {
     setReveal(null);
     setElection(null);
     setSeenElection(null);
+    setHistory(false);
     setHandedTo(null);
   }, [gameId]);
 
@@ -162,7 +172,11 @@ export const App = () => {
     }
   };
 
-  const openReport = (kind: "turn" | "election") => {
+  const openReport = (kind: "turn" | "election" | "history") => {
+    if (kind === "history") {
+      setHistory(true);
+      return;
+    }
     if (kind === "election") {
       if (state.lastElection) setElection(state.lastElection);
       return;
@@ -204,6 +218,8 @@ export const App = () => {
       {!open.reveal && open.election && (
         <ElectionReport state={state} result={open.election} onClose={() => setElection(null)} />
       )}
+      {/* Deliberately opened, so it sits over whatever else is showing. */}
+      {history && <History state={state} onClose={() => setHistory(false)} />}
     </>
   );
 };

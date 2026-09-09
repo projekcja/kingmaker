@@ -70,7 +70,7 @@ const cloneState = (state: GameState): GameState =>
     : (JSON.parse(JSON.stringify(state)) as GameState);
 
 const log = (state: GameState, kind: GameState["log"][number]["kind"], text: string): void => {
-  state.log.push({ turn: state.turn, kind, text });
+  state.log.push({ turn: state.turn, parliament: state.parliament, kind, text });
 };
 
 // ---------------------------------------------------------------------------

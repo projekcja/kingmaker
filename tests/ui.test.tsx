@@ -22,6 +22,7 @@ import {
 import { Board } from "../src/ui/Board";
 import { Chamber } from "../src/ui/Chamber";
 import { ElectionReport } from "../src/ui/ElectionReport";
+import { History } from "../src/ui/History";
 import { currentElection, currentReveal } from "../src/ui/reports";
 import { Reveal } from "../src/ui/Reveal";
 import { BlocChamber } from "../src/ui/BlocChamber";
@@ -639,5 +640,65 @@ describe("a report held across campaigns", () => {
     expect(
       currentElection({ ...voted, lastElection: { ...vote, parliament: vote.parliament + 1 } }, vote),
     ).toBeNull();
+  });
+});
+
+describe("the campaign history", () => {
+  const campaign = (seed: number, turns: number): GameState => {
+    let state = newCampaign({ seed, humanParty: "likud", bots: ["greedy"] });
+    for (let turn = 0; turn < turns && state.phase !== "over"; turn += 1) {
+      state = applyAction(state, {
+        type: "offer",
+        playerKey: "you",
+        offer: greedyOffer(state, "you", new Rng(seed + turn)),
+      }).state;
+    }
+    return state;
+  };
+
+  it("shows every line the engine has written", () => {
+    const state = campaign(601, 14);
+    const html = renderToString(<History state={state} onClose={noop} />);
+
+    expect(html).toContain("The campaign so far");
+    // The engine has written this since the first commit and nothing had ever
+    // displayed a line of it.
+    expect(state.log.length).toBeGreaterThan(0);
+    expect(html.match(/class="log-line /g) ?? []).toHaveLength(state.log.length);
+    for (const entry of state.log) expect(html).toContain(escapeHtml(entry.text));
+  });
+
+  it("groups the log by Knesset, newest first, and marks the sitting one", () => {
+    const state = campaign(602, 60);
+    const html = renderToString(<History state={state} onClose={noop} />);
+
+    const sittings = new Set(state.log.map((entry) => entry.parliament));
+    expect(html.match(/class="sitting"/g) ?? []).toHaveLength(sittings.size);
+
+    // Exactly one Knesset is sitting, and it is the one at the top: catching up
+    // means reading what just happened, not scrolling three parliaments to it.
+    expect(html.match(/class="sitting-now"/g) ?? []).toHaveLength(1);
+    if (sittings.size > 1) {
+      const heads = [...html.matchAll(/class="sitting-head">(\d+)/g)].map((m) => Number(m[1]));
+      expect(heads).toEqual([...heads].sort((a, b) => b - a));
+      expect(heads[0]).toBe(state.parliament);
+    }
+  });
+
+  it("names the kind of each entry rather than only colouring it", () => {
+    const state = campaign(603, 40);
+    const html = renderToString(<History state={state} onClose={noop} />);
+    // Colour alone would not say "trouble" to anyone who cannot tell it from
+    // "deal", so the margin carries the word.
+    for (const kind of new Set(state.log.map((entry) => entry.kind))) {
+      expect(html).toContain(`class="log-kind">${kind === "info" ? "note" : kind === "card" ? "news" : kind}<`);
+    }
+  });
+
+  it("is reachable from the side panel", () => {
+    const state = campaign(604, 3);
+    expect(renderToString(<Board state={state} onCommit={noop} />)).toContain(
+      "The campaign so far",
+    );
   });
 });
