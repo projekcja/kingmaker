@@ -1,5 +1,8 @@
+import { MAJORITY } from "../engine/parties";
+import type { CSSProperties } from "react";
+
 import type { GameState, PartyResult, TurnResult } from "../engine/types";
-import { ministryByKey, valueOf } from "../engine/types";
+import { blocSeats, ministryByKey, valueOf } from "../engine/types";
 import { Emblem } from "./Emblem";
 import { playerColour, playerName } from "./format";
 
@@ -29,10 +32,13 @@ const seatsOf = (result: TurnResult, state: GameState, partyKey: string): number
 /**
  * What the sealed bids turned out to be.
  *
- * Three questions, in the order a player asks them: who moved, what did it cost
- * them, and what did everybody actually put on the table. The last one is the
- * point of a sealed auction — you only ever learn a rival's hand here, and only
- * for the parties they chose to court.
+ * The panel used to read back the turn in three passes of equal weight, and a
+ * contested week ran to several screens of it. But a turn only ever settles one
+ * question — where everybody now stands against 61 — and every row underneath
+ * is the working. So the standings are the panel, at the size of the thing they
+ * decide; what moved is the short list under them; and every bid anybody made
+ * is still all there, folded shut, one click away for the player who wants to
+ * know what a rival was willing to pay.
  */
 export const Reveal = ({ state, result, onClose }: Props) => {
   // Every party somebody actually did something about. A holder standing pat is
@@ -63,7 +69,16 @@ export const Reveal = ({ state, result, onClose }: Props) => {
     shift(party.previousHolder, -party.seats);
     shift(party.newHolder, party.seats);
   }
-  const swings = Object.entries(swing).filter(([, mandates]) => mandates !== 0);
+  // Where everybody stands now, in the order that matters. The seat count is
+  // read off the board rather than accumulated here: the turn may have split a
+  // list or held an election since, and the standing is the standing.
+  const standings = state.players
+    .map((player) => ({
+      player,
+      seats: blocSeats(state, player.key),
+      delta: swing[player.key] ?? 0,
+    }))
+    .sort((a, b) => b.seats - a.seats);
 
   const bidders = (party: PartyResult): string[] => [
     ...new Set([...Object.keys(party.offered), ...Object.keys(party.bids)]),
@@ -95,6 +110,37 @@ export const Reveal = ({ state, result, onClose }: Props) => {
         {/* Everything that reads back the turn scrolls in its own box, so the
             way out of the panel is never a scroll away — a sealed reveal can
             run to several screens once three tables were all contested. */}
+        {/* The answer, before any of the working. Everyone's total against the
+            61 that ends the game, and what this turn did to it. */}
+        <div className="rev-standings">
+          {standings.map(({ player, seats, delta }) => (
+            <div
+              key={player.key}
+              className="rev-standing"
+              data-won={seats >= MAJORITY ? "true" : undefined}
+              style={{ "--who": playerColour(state, player.key) } as CSSProperties}
+            >
+              <div className="rev-standing-head">
+                <span className="rev-standing-name">{player.name}</span>
+                {delta !== 0 && (
+                  <span className={`rev-delta ${delta > 0 ? "up" : "down"}`}>
+                    {delta > 0 ? `+${delta}` : delta}
+                  </span>
+                )}
+              </div>
+              <div className="rev-standing-seats">{seats}</div>
+              <div
+                className="rev-standing-bar"
+                style={
+                  { "--share": `${Math.min(100, (seats / MAJORITY) * 100)}%` } as CSSProperties
+                }
+              >
+                <span />
+              </div>
+            </div>
+          ))}
+        </div>
+
         <div className="reveal-body">
         {nothingHappened && (
           <p className="muted">Nobody bid for anything. A wasted turn all round.</p>
@@ -142,20 +188,15 @@ export const Reveal = ({ state, result, onClose }: Props) => {
               </div>
             ))
           )}
-          {swings.length > 0 && (
-            <div className="rev-swing">
-              {swings.map(([playerKey, mandates]) => (
-                <span key={playerKey} style={{ color: playerColour(state, playerKey) }}>
-                  {playerName(state, playerKey)} {mandates > 0 ? `+${mandates}` : mandates}
-                </span>
-              ))}
-            </div>
-          )}
         </section>
 
+        {/* The working, folded shut. A sealed auction is the one place you ever
+            learn what a rival was willing to pay, so none of it is thrown away —
+            but on most turns it is four screens answering a question nobody
+            asked, and it now costs one click to ask it. */}
         {contested.length > 0 && (
-          <section className="rev-block">
-            <h3>On the tables</h3>
+          <details className="rev-block rev-more">
+            <summary>On the tables</summary>
             {contested.map((party) => (
               <div key={party.partyKey} className="rev-table">
                 <div className="rev-table-head">
@@ -187,7 +228,7 @@ export const Reveal = ({ state, result, onClose }: Props) => {
                 })}
               </div>
             ))}
-          </section>
+          </details>
         )}
 
         {result.cards.length > 0 && (

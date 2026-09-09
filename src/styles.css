@@ -587,33 +587,101 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* ---------------------------------------------------------- party cards */
 
+/*
+ * The board, divided the way the player reads it.
+ *
+ * Every list on the table belongs to you, to a rival, or to nobody, and that is
+ * the first question anybody asks of the board. It used to be printed on each
+ * card — a ribbon, a border colour, a line of small caps — which made it
+ * something you checked one card at a time. Now it is a place on the table:
+ * three marked regions, laid out the way a board prints its zones, so "how far
+ * short am I" is one heading rather than an addition.
+ */
+.party-zones { display: grid; gap: 12px; }
+
+.zone {
+  position: relative;
+  border: 1px solid var(--line-soft);
+  border-radius: 14px;
+  padding: 11px 13px 13px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.024), transparent 38%),
+    color-mix(in srgb, var(--panel) 48%, transparent);
+  box-shadow: inset 0 26px 44px -40px #000;
+}
+/* The printed edge of a region, a hair inside the panel's own: a board marks a
+   zone with a rule laid on the surface, not with the edge of the surface. */
+.zone::before {
+  content: "";
+  position: absolute; inset: 5px;
+  border: 1px dashed color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 10px;
+  pointer-events: none;
+}
+.zone[data-zone="mine"] {
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 42%),
+    color-mix(in srgb, var(--panel) 55%, transparent);
+}
+.zone[data-zone="mine"]::before { border-color: color-mix(in srgb, var(--accent) 26%, transparent); }
+/* Nobody's yet, so nothing is drawn closed around it. */
+.zone[data-zone="open"] { border-style: dashed; }
+
+.zone-head { display: flex; align-items: center; gap: 10px; margin: 0 1px 10px; }
+.zone-title {
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.16em;
+  text-transform: uppercase; color: var(--dim);
+}
+.zone-rule { flex: 1 1 auto; height: 0; border-top: 1px solid var(--line-soft); }
+.zone-count {
+  font-size: 11px; font-weight: 700; color: var(--dimmer);
+  font-variant-numeric: tabular-nums; letter-spacing: 0.04em;
+}
+.zone[data-zone="mine"] .zone-count { color: var(--accent); }
+.zone-empty { margin: 2px 1px 3px; font-size: 12px; color: var(--dimmer); }
+
 .parties { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; }
 /*
- * A party card is a card: it has an edge, a light on it, and a politics.
+ * A party card is a playing piece: it has an edge, a thickness, a light on it,
+ * and a politics.
  *
  * --bloc arrives from the component. The wash in the corner, the spine and the
  * hover glow all read from it, so a card is tinted by what it believes rather
- * than by a colour painted onto one strip of it.
+ * than by a colour painted onto one strip of it. The lip along the bottom and
+ * the block of colour under the card are what make it a piece lying on the
+ * table rather than a rectangle drawn on it — and picking it up on hover then
+ * means something, because there is something there to pick up.
  */
 .party-card {
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 10px;
   background:
     radial-gradient(84% 62% at 4% 0%, color-mix(in srgb, var(--bloc, transparent) 15%, transparent), transparent 68%),
     linear-gradient(168deg, var(--panel), var(--bg));
   text-align: left; position: relative; padding: 0; overflow: hidden;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 10px 26px -22px #000;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.4),
+    0 3px 0 -1px color-mix(in srgb, var(--bloc, #000) 26%, #05070c),
+    0 12px 22px -18px #000;
   transition: transform 0.12s ease, box-shadow 0.16s ease, border-color 0.16s ease;
 }
 .party-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-3px);
   box-shadow:
-    0 1px 0 rgba(255, 255, 255, 0.05) inset,
-    0 16px 32px -22px color-mix(in srgb, var(--bloc, #000) 55%, #000);
+    inset 0 1px 0 rgba(255, 255, 255, 0.07),
+    inset 0 -3px 0 rgba(0, 0, 0, 0.4),
+    0 6px 0 -1px color-mix(in srgb, var(--bloc, #000) 32%, #05070c),
+    0 20px 30px -20px color-mix(in srgb, var(--bloc, #000) 55%, #000);
 }
 .party-card.active {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent), 0 14px 30px -18px var(--accent);
+  box-shadow:
+    inset 0 -3px 0 rgba(0, 0, 0, 0.4),
+    0 0 0 2px var(--accent),
+    0 4px 0 -1px #05070c,
+    0 16px 30px -18px var(--accent);
 }
 .party-card.blocked { opacity: 0.45; }
 .party-card.pulling { opacity: 0.6; border-style: dashed; }
@@ -628,14 +696,6 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .party-spine {
   position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
   background: linear-gradient(180deg, var(--bloc, var(--line)), transparent 92%);
-}
-
-.party-ribbon {
-  position: absolute; top: 10px; right: -22px;
-  transform: rotate(34deg);
-  width: 84px; text-align: center;
-  font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
-  color: #10131a; padding: 2px 0;
 }
 
 .party-hit {
@@ -975,7 +1035,59 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   50% { box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45), inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, black), inset 0 -2px 3px rgba(0, 0, 0, 0.3), 0 0 18px 7px color-mix(in srgb, var(--accent) 65%, transparent); }
 }
 
-/* The turn read back in three passes: who walked, who moved, what it cost. */
+/*
+ * The standings, at the size of the thing they decide.
+ *
+ * This is the only question a turn actually settles, so it is the only thing in
+ * the panel drawn large. Each player gets their own colour, their total, what
+ * the turn did to it, and how much of the 61 that is — four facts in a block
+ * you read without reading, and the rest of the panel is the working behind
+ * them.
+ */
+.rev-standings {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding: 16px 22px 4px; flex: 0 0 auto;
+}
+.rev-standing {
+  flex: 1 1 130px; min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--who) 30%, var(--line));
+  border-radius: 12px; padding: 9px 12px 11px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--who) 9%, transparent), transparent 70%);
+}
+/* The delta is a bigger type than the name and is not always there, so the row
+   is given the taller of the two heights outright — otherwise a player who
+   gained nothing sits a pixel higher than one who did. */
+.rev-standing-head { display: flex; align-items: baseline; gap: 8px; min-height: 17px; }
+.rev-standing-name {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--who);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rev-delta { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rev-delta.up { color: var(--good); }
+.rev-delta.down { color: var(--bad); }
+.rev-standing-seats {
+  font-size: 34px; font-weight: 800; letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums; line-height: 1.05; margin-top: 1px;
+}
+/* The same 61-wide track the party cards use, so a standing and a list are
+   measured against the same ruler on both screens. */
+.rev-standing-bar {
+  height: 3px; border-radius: 2px; margin-top: 7px; overflow: hidden;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+}
+.rev-standing-bar > span {
+  display: block; height: 100%; width: var(--share, 0%); border-radius: 2px;
+  background: var(--who);
+}
+/* Sixty-one. Nothing else on the panel needs to say anything. */
+.rev-standing[data-won="true"] {
+  border-color: var(--who);
+  box-shadow: 0 0 0 1px var(--who), 0 0 26px -8px var(--who);
+}
+
+/* The working: who walked, who moved, and — folded shut — what it all cost. */
 .rev-block { margin: 16px 0; }
 .rev-block h3 {
   margin: 0 0 8px; font-size: 10.5px; font-weight: 700;
@@ -996,11 +1108,23 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   font-variant-numeric: tabular-nums; font-size: 12px; color: var(--dim); text-align: right;
 }
 
-/* The one number that decided anything: mandates won and given up. */
-.rev-swing {
-  display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px;
-  font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
+/* Shut, this is a line of text; open, it is the longest thing on the panel. */
+.rev-more > summary {
+  cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: 7px;
+  font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.11em; color: var(--dim);
 }
+.rev-more > summary::-webkit-details-marker { display: none; }
+.rev-more > summary::before {
+  content: "";
+  width: 0; height: 0;
+  border: 4px solid transparent; border-left-color: currentColor;
+  transition: transform 0.14s ease;
+}
+.rev-more[open] > summary::before { transform: rotate(90deg) translateX(-1px); }
+.rev-more > summary:hover { color: var(--text); }
+.rev-more[open] > summary { margin-bottom: 8px; }
 
 .rev-table { margin-bottom: 10px; }
 .rev-table-head {

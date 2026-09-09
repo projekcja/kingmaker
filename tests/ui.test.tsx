@@ -10,6 +10,7 @@ import {
   OFFERS_PER_TURN,
   TERM_LENGTH,
   biddableParties,
+  blocSeats,
   ministryByKey,
 } from "../src/engine/types";
 import {
@@ -320,6 +321,24 @@ describe("reveal", () => {
     }
   });
 
+  it("leads with where everybody stands, not with the bidding", () => {
+    const state = newCampaign({ seed: 105, humanParty: "likud", bots: ["greedy"] });
+    const next = applyAction(state, {
+      type: "offer",
+      playerKey: "you",
+      offer: greedyOffer(state, "you", new Rng(11)),
+    }).state;
+
+    const html = renderToString(<Reveal state={next} result={next.lastTurn!} onClose={noop} />);
+    // The one question a turn settles, for every player, at the top of the
+    // panel — before anything that explains how it got there.
+    for (const player of next.players) {
+      expect(html).toContain(escapeHtml(player.name));
+      expect(html).toContain(`>${blocSeats(next, player.key)}</div>`);
+    }
+    expect(html.indexOf("rev-standings")).toBeLessThan(html.indexOf("Changed hands"));
+  });
+
   it("names who a party went to and who it came from", () => {
     let state = newCampaign({ seed: 7, humanParty: "likud", bots: ["greedy"] });
     let moved = null;
@@ -458,6 +477,76 @@ describe("which side of the aisle you are on", () => {
     const html = renderToString(<Board state={state} seat="bot1" onCommit={noop} />);
     expect(html).toContain("Coalition talks");
     expect(html).not.toContain("data-side");
+  });
+});
+
+describe("whose party is whose", () => {
+  /** The markup of one zone, up to wherever the next one starts. */
+  const zoneOf = (html: string, zone: string): string => {
+    const start = html.indexOf(`data-zone="${zone}"`);
+    expect(start).toBeGreaterThan(-1);
+    const next = html.indexOf("data-zone=", start + 1);
+    return html.slice(start, next === -1 ? undefined : next);
+  };
+
+  // The card headings only. A card also prints the names of everyone its list
+  // refuses to sit with, so "is this party in this zone" cannot be asked of the
+  // zone's text — only of the cards laid in it.
+  const cardsIn = (html: string, zone: string): string[] =>
+    [...zoneOf(html, zone).matchAll(/class="party-name">([^<]*)</g)].map((match) => match[1]);
+
+  it("lays every list in the zone of whoever holds it", () => {
+    const state = newCampaign({ seed: 500, humanParty: "likud", bots: ["greedy"] });
+    const [ours, theirs, spare] = biddableParties(state);
+    ours.heldBy = "you";
+    theirs.heldBy = "bot1";
+
+    const html = renderToString(<Board state={state} seat="you" onCommit={noop} />);
+
+    expect(cardsIn(html, "mine")).toEqual([escapeHtml(ours.name)]);
+    expect(cardsIn(html, "theirs")).toEqual([escapeHtml(theirs.name)]);
+    expect(cardsIn(html, "open")).toContain(escapeHtml(spare.name));
+
+    // Every list is somewhere, and no list is in two places.
+    const laid = ["mine", "theirs", "open"].flatMap((zone) => cardsIn(html, zone));
+    expect(laid.sort()).toEqual(
+      biddableParties(state)
+        .map((party) => escapeHtml(party.name))
+        .sort(),
+    );
+  });
+
+  it("adds up each zone, so being short is something you read rather than work out", () => {
+    const state = newCampaign({ seed: 501, humanParty: "likud", bots: ["greedy"] });
+    const [ours, theirs] = biddableParties(state);
+    ours.heldBy = "you";
+    theirs.heldBy = "bot1";
+
+    const html = renderToString(<Board state={state} seat="you" onCommit={noop} />);
+    expect(zoneOf(html, "mine")).toContain(`${ours.seats} seats`);
+    expect(zoneOf(html, "theirs")).toContain(`${theirs.seats} seats`);
+  });
+
+  it("says which rival holds a list, and never labels one you hold yourself", () => {
+    const state = newCampaign({ seed: 502, humanParty: "likud", bots: ["greedy"] });
+    const [ours, theirs] = biddableParties(state);
+    ours.heldBy = "you";
+    theirs.heldBy = "bot1";
+    const rival = state.players.find((player) => player.key === "bot1")!;
+
+    const html = renderToString(<Board state={state} seat="you" onCommit={noop} />);
+    // With more than one rival, the zone says "theirs" but not whose.
+    expect(zoneOf(html, "theirs")).toContain(escapeHtml(rival.name));
+    // The zone has already said it, so the card does not say it twice.
+    expect(zoneOf(html, "mine")).not.toContain("holder");
+  });
+
+  it("names an empty zone rather than dropping it off the board", () => {
+    const state = newCampaign({ seed: 503, humanParty: "likud", bots: ["greedy"] });
+    const html = renderToString(<Board state={state} seat="you" onCommit={noop} />);
+    expect(cardsIn(html, "mine")).toEqual([]);
+    expect(zoneOf(html, "mine")).toContain("You hold nobody yet");
+    expect(zoneOf(html, "mine")).toContain("0 seats");
   });
 });
 
