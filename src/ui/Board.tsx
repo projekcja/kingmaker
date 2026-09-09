@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { CSSProperties, KeyboardEvent } from "react";
 
 import { availableMinistries, validateOffer } from "../engine/allocation";
@@ -58,6 +58,19 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
   // The bill pencilled in for this year. Null is "pass nothing", which is a
   // choice rather than the absence of one, and it is also the default.
   const [law, setLaw] = useState<string | null>(null);
+  const [dragging, setDragging] = useState<string | null>(null);
+  const trayRef = useRef<HTMLDivElement | null>(null);
+
+  // Picking a party is the start of a table, and the table — chips and the
+  // commit row both — is what the player needs to see next, not just its
+  // top edge. "end" only pulls the page when the tray is not already
+  // fully on screen, so a tray already visible does not jump.
+  const selectParty = (key: string) => {
+    setActive(key);
+    requestAnimationFrame(() => {
+      trayRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    });
+  };
 
   const offer: Offer = useMemo(
     () => ({
@@ -109,6 +122,25 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
       next[active] = [...(next[active] ?? []), key];
       return next;
     });
+  };
+
+  // Dragging a chip straight onto a party is the same move as clicking the
+  // party then the chip, minus the middle step. It always targets the party
+  // dropped on rather than whatever was last clicked, so it strips the
+  // ministry from wherever it sat and re-lands it there — a no-op if that is
+  // where it already was, a move if it was on another table, and refused
+  // outright if the drop would open a fourth table past the cap.
+  const placeOn = (partyKey: string, ministryKey: string) => {
+    setBids((current) => {
+      const stripped: Record<string, string[]> = {};
+      for (const [key, ministries] of Object.entries(current)) {
+        const kept = ministries.filter((entry) => entry !== ministryKey);
+        if (kept.length > 0) stripped[key] = kept;
+      }
+      if (!stripped[partyKey] && Object.keys(stripped).length >= OFFERS_PER_TURN) return current;
+      return { ...stripped, [partyKey]: [...(stripped[partyKey] ?? []), ministryKey] };
+    });
+    setActive(partyKey);
   };
 
   const toggleWithdraw = (partyKey: string) =>
@@ -206,6 +238,10 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
   const span = forming ? FORMING_DEADLINE : TERM_LENGTH;
   const spent = forming ? state.week : state.governmentYears + 1;
   const label = forming ? "weeks to form a government" : "years of this Knesset";
+  // Only the forming clock is a fuse — the Knesset dissolving on week six is a
+  // real loss condition, and a term running out is not. Two weeks or fewer is
+  // when a stalled negotiation is genuinely close to dissolution.
+  const fuseUrgent = forming && span - spent <= 2;
 
   return (
     <div
@@ -227,7 +263,7 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
           <Emblem className="hud-emblem" />
           <div className="phase-tag">{tag}</div>
           <div className="phase">{headline}</div>
-          <div className="clock">
+          <div className="clock" data-urgent={fuseUrgent ? "true" : undefined}>
             <span className="pips" title={`${clock} · ${label}`}>
               {Array.from({ length: span }, (_, index) => (
                 <span
@@ -291,11 +327,20 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
             const forecloses = redLinesFor(state, party.key).filter(
               (key) => !blocked.includes(key),
             );
+            // Whether a chip in mid-drag would actually land here: not on a
+            // party already refusing the player, and not opening a fourth
+            // table when three are already spoken for elsewhere.
+            const dropRefused =
+              dragging !== null &&
+              (blocked.length > 0 ||
+                (!bids[party.key]?.includes(dragging) &&
+                  !bids[party.key] &&
+                  Object.keys(bids).length >= OFFERS_PER_TURN));
 
             return (
               <div
                 key={party.key}
-                className={`party-card ${active === party.key ? "active" : ""} ${blocked.length ? "blocked" : ""} ${pulling ? "pulling" : ""} ${diaryFull && pending.length === 0 ? "shut" : ""}`}
+                className={`party-card ${active === party.key ? "active" : ""} ${blocked.length ? "blocked" : ""} ${pulling ? "pulling" : ""} ${diaryFull && pending.length === 0 ? "shut" : ""} ${dragging ? (dropRefused ? "drop-bad" : "drop-ok") : ""}`}
                 // The bloc colour is handed to the card as a custom property
                 // rather than painted onto one element, so the spine, the wash
                 // behind the seat count and the hover glow are all the same
@@ -306,6 +351,15 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
                     "--bloc": BLOC_COLOUR[party.bloc],
                   } as CSSProperties
                 }
+                onDragOver={(event) => {
+                  if (dragging) event.preventDefault();
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const key = event.dataTransfer.getData("text/plain") || dragging;
+                  if (key) placeOn(party.key, key);
+                  setDragging(null);
+                }}
               >
                 <span className="party-spine" />
                 {party.heldBy && (
@@ -317,15 +371,15 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
                   </span>
                 )}
                 <button
-                className="party-hit"
-                aria-pressed={active === party.key}
-                onClick={() => setActive(party.key)}
-                title={
-                  diaryFull && pending.length === 0
-                    ? `No meetings left this ${forming ? "week" : "year"} — cancel one to court ${party.name}`
-                    : undefined
-                }
-              >
+                  className="party-hit"
+                  aria-pressed={active === party.key}
+                  onClick={() => selectParty(party.key)}
+                  title={
+                    diaryFull && pending.length === 0
+                      ? `No meetings left this ${forming ? "week" : "year"} — cancel one to court ${party.name}`
+                      : undefined
+                  }
+                >
                   <div className="party-head">
                     <span className="party-seats">{party.seats}</span>
                     <span className="party-name">{party.name}</span>
@@ -351,7 +405,19 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
 
                   {blocked.length > 0 && (
                     <div className="redline">
-                      refuses you over {blocked.map((key) => state.parties[key]?.name).join(", ")}
+                      refuses you over{" "}
+                      {blocked
+                        .map((key) => {
+                          const name = state.parties[key]?.name;
+                          // The line itself lapses on a turn already sitting in
+                          // state; showing it is a read, not new bookkeeping.
+                          const left = party.refusals.find((r) => r.partyKey === key)?.until;
+                          const turns = left !== undefined ? left - state.turn : undefined;
+                          return turns && turns > 0
+                            ? `${name} (${turns} more turn${turns === 1 ? "" : "s"})`
+                            : name;
+                        })
+                        .join(", ")}
                     </div>
                   )}
 
@@ -400,7 +466,7 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
           })}
         </div>
 
-        <div className="tray">
+        <div className="tray" ref={trayRef}>
           {/* The government's one act of the year, above the diary because it
               is the only thing on this screen that is not an auction. */}
           <Bill state={state} chosen={law} onChoose={setLaw} yours={inPower} />
@@ -507,11 +573,22 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
               return (
                 <button
                   key={key}
-                  className={`chip ${used ? "used" : ""} ${spent ? "spent" : ""}`}
+                  className={`chip ${used ? "used" : ""} ${spent ? "spent" : ""} ${dragging === key ? "dragged" : ""}`}
                   data-tier={tier}
                   aria-pressed={used}
                   onClick={() => toggleMinistry(key)}
-                  title={`${ministry.name} — ${ministry.budget}bn`}
+                  draggable
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData("text/plain", key);
+                    event.dataTransfer.effectAllowed = "move";
+                    setDragging(key);
+                  }}
+                  onDragEnd={() => setDragging(null)}
+                  title={
+                    diaryFull
+                      ? `${ministry.name} — ${ministry.budget}bn (cancel a meeting first — only ${OFFERS_PER_TURN} at a time)`
+                      : `${ministry.name} — ${ministry.budget}bn — drag onto a party to offer it`
+                  }
                 >
                   <span className="chip-coin">{ministry.budget}</span>
                   <span className="chip-name">{ministry.name}</span>

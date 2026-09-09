@@ -5,6 +5,7 @@ import { partyHistory } from "../engine/history";
 import { BLOC_LABEL, CHAMBERS, DEFAULT_CHAMBER, chamberById } from "../engine/parties";
 import type { PlayerKind } from "../engine/types";
 import { YEARS_TO_WIN } from "../engine/types";
+import { AchievementStrip } from "./Achievements";
 import { BlocChamber } from "./BlocChamber";
 import { Emblem } from "./Emblem";
 import { BLOC_COLOUR } from "./format";
@@ -18,6 +19,8 @@ interface Props {
   }) => void;
   /** Which board the screen opens on. The default is the one a campaign gets. */
   chamber?: string;
+  /** Trophies this browser has already earned, across every past campaign. */
+  unlocked?: Set<string>;
 }
 
 const BOT_SETS: Array<{ label: string; bots: PlayerKind[]; note: string }> = [
@@ -36,7 +39,7 @@ const BOT_SETS: Array<{ label: string; bots: PlayerKind[]; note: string }> = [
   },
 ];
 
-export const Setup = ({ onStart, chamber: opening = DEFAULT_CHAMBER }: Props) => {
+export const Setup = ({ onStart, chamber: opening = DEFAULT_CHAMBER, unlocked = new Set() }: Props) => {
   const [chamberId, setChamberId] = useState(opening);
   const chamber = chamberById(chamberId);
   const ranked = [...chamber.parties].sort((a, b) => b.baseSeats - a.baseSeats);
@@ -220,6 +223,13 @@ export const Setup = ({ onStart, chamber: opening = DEFAULT_CHAMBER }: Props) =>
         />
         <span className="need">first to {YEARS_TO_WIN} years in power</span>
       </div>
+
+      {unlocked.size > 0 && (
+        <div className="setup-block">
+          <div className="setup-label">Trophies</div>
+          <AchievementStrip unlocked={unlocked} />
+        </div>
+      )}
     </div>
   );
 };

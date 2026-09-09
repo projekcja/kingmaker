@@ -69,17 +69,33 @@ export const Reveal = ({ state, result, onClose }: Props) => {
     ...new Set([...Object.keys(party.offered), ...Object.keys(party.bids)]),
   ];
 
+  const swornIn = result.swornIn;
+
   return (
     <div className="reveal-backdrop" onClick={onClose}>
-      <div className="reveal" onClick={(event) => event.stopPropagation()}>
-        {/* The bids were sealed until this panel opened; the seal says so. */}
+      <div
+        className="reveal"
+        data-coronation={swornIn ? "true" : undefined}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {/* The bids were sealed until this panel opened; the seal says so —
+            unless this is the turn somebody crossed 61, in which case the
+            reveal has bigger news than who bid what. */}
         <div className="reveal-head">
           <span className="reveal-seal">
             <Emblem />
           </span>
-          <h2>The offers are opened</h2>
+          {swornIn ? (
+            <h2>{playerName(state, swornIn)} is sworn in as Prime Minister</h2>
+          ) : (
+            <h2>The offers are opened</h2>
+          )}
         </div>
 
+        {/* Everything that reads back the turn scrolls in its own box, so the
+            way out of the panel is never a scroll away — a sealed reveal can
+            run to several screens once three tables were all contested. */}
+        <div className="reveal-body">
         {nothingHappened && (
           <p className="muted">Nobody bid for anything. A wasted turn all round.</p>
         )}
@@ -187,10 +203,13 @@ export const Reveal = ({ state, result, onClose }: Props) => {
             ))}
           </div>
         )}
+        </div>
 
-        <button className="commit" onClick={onClose}>
-          Carry on
-        </button>
+        <div className="reveal-footer">
+          <button className="commit" onClick={onClose}>
+            Carry on
+          </button>
+        </div>
       </div>
     </div>
   );

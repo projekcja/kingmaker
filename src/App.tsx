@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { humanPlayers, pendingSeat } from "./engine/campaign";
 import { RULES_VERSION, TERM_LENGTH } from "./engine/types";
-import type { ElectionResult, Offer, PlayerKind, TurnResult } from "./engine/types";
+import type { ElectionResult, GameState, Offer, PlayerKind, TurnResult } from "./engine/types";
 import { newGameId } from "./net/transport";
 import { transport, useGame } from "./net/useGame";
+import type { Achievement } from "./ui/achievements";
+import { achievementByKey, loadUnlocked, saveUnlocked, unlockedBy } from "./ui/achievements";
+import { AchievementStrip, AchievementToast } from "./ui/Achievements";
 import { Board } from "./ui/Board";
 import { ElectionReport } from "./ui/ElectionReport";
 import { History } from "./ui/History";
@@ -43,6 +46,16 @@ export const App = () => {
   /** The seat the screen has been handed to, as `turn:player`. Hot seat only. */
   const [handedTo, setHandedTo] = useState<string | null>(null);
   const game = useGame(gameId);
+
+  // Trophies are a browser's, not a campaign's — loaded once and kept beside
+  // whatever this session unlocks so a toast never fires twice for the same
+  // one. `prevStateRef` and `oppositionRef` are the one-turn-back memory
+  // {@link unlockedBy} needs and cannot keep itself; both are wiped whenever
+  // the open campaign changes, in the effect just below.
+  const [unlockedKeys, setUnlockedKeys] = useState<Set<string>>(() => loadUnlocked());
+  const [toast, setToast] = useState<Achievement | null>(null);
+  const prevStateRef = useRef<GameState | null>(null);
+  const oppositionRef = useRef<Record<string, boolean>>({});
 
   useEffect(() => {
     const onHashChange = () => setGameId(readHash());
@@ -95,9 +108,52 @@ export const App = () => {
     setSeenElection(null);
     setHistory(false);
     setHandedTo(null);
+    prevStateRef.current = null;
+    oppositionRef.current = {};
   }, [gameId]);
 
-  if (!gameId) return <Setup onStart={(options) => void start(options)} />;
+  // Checked on every turn, against the turn just before it. The first render
+  // of a loaded campaign only sets `prevStateRef` — a reload or a fresh visit
+  // to an old save must not hand out a trophy for something that happened
+  // before this browser was watching.
+  useEffect(() => {
+    const next = game.state;
+    if (!next) return;
+    const prev = prevStateRef.current;
+    if (prev) {
+      const result = next.lastTurn && next.lastTurn.turn === prev.turn ? next.lastTurn : null;
+      const newlyUnlocked: string[] = [];
+      for (const player of humanPlayers(next)) {
+        const hasBeenOpposition = oppositionRef.current[player.key] ?? false;
+        for (const key of unlockedBy({ seatKey: player.key, prev, next, result, hasBeenOpposition })) {
+          if (!unlockedKeys.has(key)) newlyUnlocked.push(key);
+        }
+        const inOpposition =
+          (next.phase === "governing" || next.phase === "rebuilding") && next.primeMinister !== player.key;
+        oppositionRef.current[player.key] = hasBeenOpposition || inOpposition;
+      }
+      if (newlyUnlocked.length > 0) {
+        setUnlockedKeys((current) => {
+          const merged = new Set(current);
+          for (const key of newlyUnlocked) merged.add(key);
+          saveUnlocked(merged);
+          return merged;
+        });
+        const achievement = achievementByKey(newlyUnlocked[0]);
+        if (achievement) setToast(achievement);
+      }
+    }
+    prevStateRef.current = next;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [game.state?.turn]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), 5000);
+    return () => clearTimeout(timer);
+  }, [toast]);
+
+  if (!gameId) return <Setup onStart={(options) => void start(options)} unlocked={unlockedKeys} />;
   if (game.loading) return <div className="setup">Loading…</div>;
 
   if (!game.record || !game.state) {
@@ -144,6 +200,7 @@ export const App = () => {
             New campaign
           </button>
         </div>
+        <AchievementStrip unlocked={unlockedKeys} />
       </div>
     );
   }
@@ -220,6 +277,7 @@ export const App = () => {
       )}
       {/* Deliberately opened, so it sits over whatever else is showing. */}
       {history && <History state={state} onClose={() => setHistory(false)} />}
+      {toast && <AchievementToast achievement={toast} />}
     </>
   );
 };

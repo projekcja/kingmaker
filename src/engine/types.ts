@@ -290,6 +290,8 @@ export interface TurnResult {
    */
   laws: Array<{ playerKey: string; lawId: string; title: string; text: string }>;
   cards: Array<{ playerKey: string; title: string; text: string }>;
+  /** Set when this turn made someone prime minister who was not one already. */
+  swornIn?: string | null;
 }
 
 export interface GameState {
