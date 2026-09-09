@@ -205,7 +205,7 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   position: absolute; top: 1.5vh; right: -26px;
   width: 268px; height: 268px;
   color: var(--accent);
-  opacity: 0.07;
+  opacity: 0.05;
   pointer-events: none;
   z-index: -1;
 }
@@ -274,6 +274,26 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .pick-name { font-size: 13px; line-height: 1.25; }
 .pick-bloc { font-size: 10px; text-transform: uppercase; letter-spacing: 0.09em; }
+
+/*
+ * What the selected list actually was.
+ *
+ * Under the grid rather than inside a card: it is one paragraph about one
+ * party, and putting it in the tile would either truncate it or make every
+ * tile that tall. The rule down the left is the same device the outcome line
+ * uses, so the two read as the same kind of aside — history, not a control.
+ */
+.party-note {
+  margin-top: 11px; padding: 10px 0 10px 13px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.party-note-head { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.party-note-name { font-size: 13px; font-weight: 700; }
+.party-note-bloc { font-size: 10px; text-transform: uppercase; letter-spacing: 0.09em; }
+.party-note p {
+  margin: 5px 0 0; max-width: 68ch;
+  font-size: 12.5px; line-height: 1.55; color: var(--dim);
+}
 .hint code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; }
 
 /* What the country did with this board. The benchmark, not a footnote. */
@@ -628,6 +648,100 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em;
 }
 .redline { color: var(--bad); font-size: 10.5px; margin-top: 6px; }
+/*
+ * The lines this list has with everyone else.
+ *
+ * Dimmer than the one above it on purpose. "Refuses you" is a fact about this
+ * turn and stops a purchase dead; "won't sit with" is a fact about the turn
+ * after next, and drawing them at the same weight made every card look
+ * blocked. The dash on the left is the same dash the map uses for a line.
+ */
+.redline.soft {
+  display: flex; align-items: baseline; gap: 5px;
+  color: var(--dimmer); margin-top: 3px;
+}
+.redline-mark {
+  flex: 0 0 auto; width: 9px; height: 0;
+  border-top: 1px dashed color-mix(in srgb, var(--bad) 70%, transparent);
+  transform: translateY(-3px);
+}
+
+/*
+ * The map of red lines: a ring of lists in political order, chorded by who
+ * will not sit with whom.
+ *
+ * The ring and the key are one component and share a hover, because neither
+ * half is legible alone — the ring has the shape and none of the names, the
+ * key has the names and none of the shape.
+ */
+.redmap {
+  margin-top: 14px; padding: 12px 14px 11px;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+}
+.redmap-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.redmap-title {
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim);
+}
+.redmap-count { font-size: 11px; color: var(--dimmer); font-variant-numeric: tabular-nums; }
+.redmap-empty { margin: 8px 0 0; font-size: 12px; line-height: 1.5; color: var(--dim); max-width: 64ch; }
+
+.redmap-body { display: flex; gap: 16px; align-items: flex-start; margin-top: 10px; }
+.redmap-svg { flex: 0 0 auto; width: 236px; height: 236px; overflow: visible; }
+@media (max-width: 900px) {
+  .redmap-body { flex-direction: column; }
+  .redmap-svg { align-self: center; }
+}
+
+.redmap-ring {
+  fill: none;
+  stroke: color-mix(in srgb, var(--line) 70%, transparent);
+  stroke-width: 1;
+}
+
+/* Politics is solid and permanent; a card's promise is dashed, because it
+   lapses and because the eye should be able to discount it. */
+.redmap-line {
+  fill: none;
+  stroke: color-mix(in srgb, var(--bad) 62%, transparent);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  transition: opacity 120ms ease, stroke-width 120ms ease;
+}
+.redmap-line.carded { stroke-dasharray: 3.5 3; }
+.redmap-line.off { opacity: 0.12; }
+
+.redmap-node { cursor: default; outline: none; }
+.redmap-dot { transition: opacity 120ms ease; }
+.redmap-node.off .redmap-dot { opacity: 0.22; }
+.redmap-node.lit .redmap-dot { filter: brightness(1.25); }
+.redmap-node:focus-visible .redmap-dot { stroke: var(--accent); stroke-width: 2; }
+.redmap-collar { fill: none; stroke-width: 1.6; opacity: 0.75; }
+.redmap-collar.mine { stroke-width: 2.2; opacity: 1; }
+.redmap-node.off .redmap-collar { opacity: 0.15; }
+
+.redmap-key { list-style: none; margin: 0; padding: 0; flex: 1 1 auto; min-width: 0; }
+.redmap-row {
+  display: grid; grid-template-columns: 9px minmax(0, auto) minmax(0, 1fr) 18px;
+  align-items: baseline; gap: 8px;
+  padding: 2.5px 5px; border-radius: 5px;
+  font-size: 11.5px; line-height: 1.35;
+}
+.redmap-row.lit { background: var(--panel-2); }
+.redmap-swatch { width: 9px; height: 9px; border-radius: 50%; transform: translateY(1px); }
+.redmap-row-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.redmap-row-against {
+  color: var(--bad); min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.redmap-row-count {
+  text-align: right; font-variant-numeric: tabular-nums;
+  font-weight: 700; color: var(--bad);
+}
+.redmap-row.clear .redmap-row-against { color: var(--dimmer); }
+.redmap-row.clear .redmap-swatch { opacity: 0.55; }
+
+.redmap-rule { margin: 10px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--dimmer); max-width: 72ch; }
 .party-price { display: flex; gap: 8px; align-items: baseline; margin-top: 8px; }
 .party-price .current { font-size: 13px; font-weight: 650; color: var(--dimmer); }
 .party-price .pending { font-size: 13px; font-weight: 800; color: var(--accent); }
@@ -1221,3 +1335,87 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Arrow keys walk a group, so the focused member has to be findable at a
    glance among eighteen near-identical coins. */
 .chip:focus-visible { border-color: var(--accent); }
+
+/* ---------------------------------------------------------------------------
+ * The order paper.
+ *
+ * Three bills and a refusal, at the top of the tray. It is the only control on
+ * the screen that is not an auction, so it is the only one drawn as a stack of
+ * paragraphs rather than as a chip — a law has to be read before it is chosen,
+ * and reading is what the width of the tray is for.
+ * ------------------------------------------------------------------------ */
+.bill {
+  margin-bottom: 12px; padding: 11px 12px 10px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+}
+.bill-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.bill-title {
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim);
+}
+.bill-note { font-size: 11px; color: var(--dimmer); }
+
+.bill-options { display: grid; gap: 6px; margin-top: 9px; }
+.bill-option {
+  display: block; width: 100%; text-align: left;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--line); color: var(--text);
+  border-left-width: 3px;
+}
+.bill-option:hover { border-color: var(--line-strong, var(--accent)); }
+.bill-option.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+/* The three kinds pay at different times, so they are told apart on the left
+   edge: the ballot at the next election, partners next turn, the cabinet now. */
+.bill-option[data-kind="ballot"] { border-left-color: #6f8dc4; }
+.bill-option[data-kind="mood"] { border-left-color: #c0b083; }
+.bill-option[data-kind="cabinet"] { border-left-color: #7fb8a8; }
+.bill-option.none { border-left-color: var(--line); }
+
+.bill-option-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.bill-option-title { font-size: 12.5px; font-weight: 700; }
+.bill-option-kind {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--dimmer);
+}
+.bill-option-effect {
+  display: block; margin-top: 3px;
+  font-size: 11.5px; line-height: 1.45; color: var(--dim);
+}
+
+/* What the statutes already on the books are doing to the next election. */
+.bill-force {
+  display: flex; align-items: baseline; gap: 7px; flex-wrap: wrap;
+  margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line-soft);
+}
+.bill-force-label {
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--dimmer);
+}
+.bill-force-item {
+  font-size: 11px; font-variant-numeric: tabular-nums;
+  padding: 1px 6px; border-radius: 9px; background: var(--panel);
+}
+.bill-force-item.up { color: var(--good, #5fa86d); }
+.bill-force-item.down { color: var(--bad); }
+
+/* A partner a law has pleased or offended, on the party card. */
+.party-mood { font-size: 10px; font-weight: 700; letter-spacing: 0.02em; }
+.party-mood.pleased { color: var(--good, #5fa86d); }
+.party-mood.angry { color: var(--bad); }
+
+/*
+ * What your own list keeps.
+ *
+ * Above the hand, because it is the reason the hand is the size it is. Reads
+ * as a subtraction already made rather than as a set of chips you might spend:
+ * no borders, no affordance, and the value first.
+ */
+.kept {
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+  margin: 2px 0 8px; padding: 6px 9px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.kept-label { font-size: 11.5px; font-weight: 700; color: var(--dim); white-space: nowrap; }
+.kept-list { font-size: 11px; color: var(--dimmer); line-height: 1.4; }

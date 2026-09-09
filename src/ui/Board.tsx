@@ -12,13 +12,20 @@ import {
   biddableParties,
   blocSeats,
   ministryByKey,
+  moodOf,
+  packageFace,
   packageValue,
+  redLinesFor,
+  reservedMinistries,
+  reservedValue,
   refusalsAgainst,
   valueOf,
 } from "../engine/types";
 import { Chamber } from "./Chamber";
 import { Dispatch } from "./Dispatch";
+import { Bill } from "./Bill";
 import { Emblem } from "./Emblem";
+import { RedLines } from "./RedLines";
 import { BLOC_COLOUR, playerColour, playerName } from "./format";
 
 interface Props {
@@ -48,6 +55,9 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
   const [bids, setBids] = useState<Record<string, string[]>>({});
   const [withdrawFrom, setWithdrawFrom] = useState<string[]>([]);
   const [active, setActive] = useState<string | null>(null);
+  // The bill pencilled in for this year. Null is "pass nothing", which is a
+  // choice rather than the absence of one, and it is also the default.
+  const [law, setLaw] = useState<string | null>(null);
 
   const offer: Offer = useMemo(
     () => ({
@@ -55,8 +65,9 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
         .filter(([, ministries]) => ministries.length > 0)
         .map(([partyKey, ministries]) => ({ partyKey, ministries })),
       withdrawFrom,
+      law,
     }),
-    [bids, withdrawFrom],
+    [bids, withdrawFrom, law],
   );
 
   const problems = useMemo(
@@ -69,6 +80,11 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
   // Two people at one keyboard need telling which board they are looking at.
   const sharing = state.players.filter((player) => player.kind === "human").length > 1;
   const hand = availableMinistries(state, human.key, offer);
+  // Portfolios your own party has claimed for its own MKs, which never reach
+  // the hand at all. Proportional to the list you lead, so leading a giant is
+  // no longer free.
+  const kept = reservedMinistries(state, human.key);
+  const keptValue = reservedValue(state, human.key);
   const assigned = new Set(Object.values(bids).flat());
   // The week's diary: which parties already have something in front of them.
   // This is the only resource the game actually rations, and until it was drawn
@@ -150,6 +166,7 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
   const reset = () => {
     setBids({});
     setWithdrawFrom([]);
+    setLaw(null);
   };
 
   const forming = state.phase === "forming";
@@ -262,7 +279,18 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
             const pending = bids[party.key] ?? [];
             const pendingValue = valueOf(state, pending);
             const current = pulling ? 0 : packageValue(state, party.key);
+            // What the portfolios are worth on paper, before the party's mood
+            // is applied — the two differ exactly when a law has landed.
+            const face = pulling ? 0 : packageFace(state, party.key);
+            const mood = moodOf(state, party.key);
             const blocked = refusalsAgainst(state, party, human.key);
+            // Who this list will not sit with, whoever ends up holding it.
+            // `blocked` is the same fact asked from inside your bloc; these are
+            // the partners buying it would cost you later, which is a price
+            // the card never quoted.
+            const forecloses = redLinesFor(state, party.key).filter(
+              (key) => !blocked.includes(key),
+            );
 
             return (
               <div
@@ -327,9 +355,28 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
                     </div>
                   )}
 
+                  {forecloses.length > 0 && (
+                    <div className="redline soft">
+                      <span className="redline-mark" aria-hidden="true" />
+                      won't sit with{" "}
+                      {forecloses.map((key) => state.parties[key]?.name).join(", ")}
+                    </div>
+                  )}
+
                   <div className="party-price">
                     <span className="current">{current > 0 ? `holding ${current}bn` : "no offer"}</span>
                     {pendingValue > 0 && <span className="pending">+{pendingValue}bn</span>}
+                    {/* What a law did to them. The number above already has the
+                        discount in it — this says why it is not the sum of the
+                        portfolios on the card. */}
+                    {mood && face !== current && (
+                      <span
+                        className={`party-mood ${mood.delta > 0 ? "pleased" : "angry"}`}
+                        title={`${party.name} ${mood.delta > 0 ? "is pleased about" : "is furious about"} ${mood.because}. The ${face}bn holding them counts as ${current}bn until it wears off.`}
+                      >
+                        {mood.delta > 0 ? "pleased" : "angry"} · {face}bn
+                      </span>
+                    )}
                   </div>
 
                   {pending.length > 0 && (
@@ -353,7 +400,16 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
           })}
         </div>
 
+        {/* The whole map of who refuses whom, under the cards rather than
+            beside them: it is read before a turn and then not again, so it
+            sits after the thing it is advice about. */}
+        <RedLines state={state} seat={human.key} />
+
         <div className="tray">
+          {/* The government's one act of the year, above the diary because it
+              is the only thing on this screen that is not an auction. */}
+          <Bill state={state} chosen={law} onChoose={setLaw} yours={inPower} />
+
           {/* The diary. Three meetings is the only thing the game rations, and
               it was being reported as "0 of 3 tables" in the corner — a number
               nobody reads until they have already been refused by it. Drawn as
@@ -424,6 +480,24 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
               {valueOf(state, hand.filter((k) => !assigned.has(k)))}bn still in hand
             </span>
           </div>
+
+          {/* What your own list has taken off the table before you start.
+              Drawn beside the hand rather than announced once, because the
+              question it answers — "why can I only spend this much" — is asked
+              every single turn. */}
+          {kept.length > 0 && (
+            <div className="kept" title="Your own MKs hold these. The bigger your list, the more of the cabinet it eats.">
+              <span className="kept-label">
+                {state.parties[human.partyKey]?.name} keeps {keptValue}bn
+              </span>
+              <span className="kept-list">
+                {kept
+                  .map((key) => ministryByKey(state, key)?.name)
+                  .filter(Boolean)
+                  .join(", ")}
+              </span>
+            </div>
+          )}
 
           <div className="chips" onKeyDown={walk(".chip")}>
             {hand.map((key) => {

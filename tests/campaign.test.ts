@@ -31,6 +31,9 @@ import {
   blocSeats,
   emptyOffer,
   freeMinistries,
+  reservedMinistries,
+  reservedValue,
+  valueOf,
 } from "../src/engine/types";
 import { playCampaign } from "./harness";
 
@@ -124,7 +127,13 @@ describe("setup", () => {
     expect(seatTotal(state)).toBe(TOTAL_SEATS);
     for (const player of state.players) {
       expect(blocSeats(state, player.key)).toBeLessThan(MAJORITY);
-      expect(freeMinistries(state, player.key)).toHaveLength(18);
+      // Not all eighteen: every leader's own list has already claimed a share
+      // of the cabinet in proportion to its seats.
+      expect(freeMinistries(state, player.key).length).toBeLessThan(18);
+      expect(freeMinistries(state, player.key).length).toBeGreaterThan(0);
+      expect(
+        valueOf(state, freeMinistries(state, player.key)) + reservedValue(state, player.key),
+      ).toBe(171);
     }
     expect(state.phase).toBe("forming");
     expect(state.ministries.reduce((sum, m) => sum + m.budget, 0)).toBe(171);
@@ -295,23 +304,40 @@ describe("the term", () => {
   });
 
   it("carries coalition agreements across the end of a term", () => {
-    // The seed has to be one where no card reopens the deal on the way through:
-    // a minister resigning takes the portfolio back, which is a different rule
-    // working, and would be read here as this one failing.
-    let state = sworn(4249);
-    state.parties.shas.heldBy = "you";
-    state.parties.shas.package = ["defense"];
+    // A card that reopens the deal takes the portfolio back, which is a
+    // different rule working and would be read here as this one failing. Rather
+    // than pin a seed that happens to avoid the deck — the deck grows, and the
+    // seed silently stops meaning what it meant — run seeds until one gets
+    // through a whole term with the agreement undisturbed, and assert on that.
+    let checked = false;
+    for (const seed of SEEDS.slice(0, 40)) {
+      let state = sworn(seed);
+      if (!state.parties.shas) continue;
+      state.parties.shas.heldBy = "you";
+      state.parties.shas.package = ["defense"];
 
-    const parliament = state.parliament;
-    for (let year = 0; year < TERM_LENGTH + 2 && state.parliament === parliament; year += 1) {
-      state.emergencyUntil = 0;
-      state = humanMove(state, emptyOffer());
+      const parliament = state.parliament;
+      let disturbed = false;
+      for (let year = 0; year < TERM_LENGTH + 2 && state.parliament === parliament; year += 1) {
+        state.emergencyUntil = 0;
+        state = humanMove(state, emptyOffer());
+        const shas = state.parties.shas;
+        if (!shas) break;
+        // Only the election itself may move this agreement.
+        if (state.parliament === parliament && (shas.heldBy !== "you" || shas.package.length !== 1)) {
+          disturbed = true;
+          break;
+        }
+      }
+      if (disturbed || state.parliament !== parliament + 1) continue;
+      if (!state.parties.shas) continue; // voted out of the chamber; covered elsewhere
+
+      expect(state.parties.shas.heldBy).toBe("you");
+      expect(state.parties.shas.package).toEqual(["defense"]);
+      checked = true;
+      break;
     }
-    expect(state.parliament).toBe(parliament + 1);
-    if (!state.parties.shas) return; // voted out of the chamber; covered elsewhere
-
-    expect(state.parties.shas.heldBy).toBe("you");
-    expect(state.parties.shas.package).toEqual(["defense"]);
+    expect(checked).toBe(true);
   });
 });
 
@@ -466,7 +492,17 @@ describe("elections", () => {
         .filter((party) => party.heldBy === "you")
         .flatMap((party) => party.package);
       expect(new Set(locked).size).toBe(locked.length);
-      expect(freeMinistries(state, "you").length + locked.length).toBe(state.ministries.length);
+      // Every portfolio is in exactly one of three places: promised to a
+      // partner, kept by the player's own list, or free in their hand.
+      const free = new Set(freeMinistries(state, "you"));
+      const kept = new Set(reservedMinistries(state, "you"));
+      const held = new Set(locked);
+      for (const ministry of state.ministries) {
+        expect(free.has(ministry.key) || kept.has(ministry.key) || held.has(ministry.key)).toBe(
+          true,
+        );
+        expect(free.has(ministry.key) && held.has(ministry.key)).toBe(false);
+      }
     }
   });
 
@@ -509,7 +545,15 @@ describe("elections", () => {
     }
     if (state.parties.labor) return; // never dropped out on this seed
 
-    expect(freeMinistries(state, "you")).toContain("defense");
+    // Nothing is holding it any more. Whether it lands in the hand or is
+    // claimed by the player's own list is the other rule's business.
+    expect(
+      Object.values(state.parties).some((party) => party.package.includes("defense")),
+    ).toBe(false);
+    expect([
+      ...freeMinistries(state, "you"),
+      ...reservedMinistries(state, "you"),
+    ]).toContain("defense");
     expect(seatTotal(state)).toBe(TOTAL_SEATS);
   });
 

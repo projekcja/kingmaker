@@ -17,7 +17,7 @@ import type { Bloc } from "./parties";
  * whatever code is running now, so a mismatch has to be refused rather than
  * silently producing a different game.
  */
-export const RULES_VERSION = 6;
+export const RULES_VERSION = 7;
 
 export const YEARS_TO_WIN = 10;
 
@@ -112,6 +112,16 @@ export interface Offer {
    * to move a portfolio once it has been promised.
    */
   withdrawFrom: string[];
+  /**
+   * The bill the prime minister is putting to the house this year.
+   *
+   * Sealed with the rest of the turn because it is part of the same move, not
+   * because it is secret — a government's legislative programme is the least
+   * secret thing about it. It rides on the offer so that a turn stays one
+   * commit and one round trip; `null` or absent is the perfectly ordinary
+   * choice of passing nothing.
+   */
+  law?: string | null;
 }
 
 export const emptyOffer = (): Offer => ({ bids: [], withdrawFrom: [] });
@@ -270,6 +280,15 @@ export interface TurnResult {
   parties: PartyResult[];
   /** Partners abandoned before the offers were opened. */
   withdrawals: Withdrawal[];
+  /**
+   * The bill the government passed this year, if it passed one.
+   *
+   * An array rather than a single entry, and beside the cards rather than
+   * inside them, because it is the same shape as a card in the reveal and the
+   * opposite thing in the fiction: a card is what happened to the government,
+   * a law is what the government did. At most one per turn today.
+   */
+  laws: Array<{ playerKey: string; lawId: string; title: string; text: string }>;
   cards: Array<{ playerKey: string; title: string; text: string }>;
 }
 
@@ -311,10 +330,80 @@ export interface GameState {
    */
   lastElection: ElectionResult | null;
 
+  /**
+   * The three bills on the order paper, and whose choice they are.
+   *
+   * Drawn when a government year begins and cleared when it is spent, so a
+   * campaign that is not governing has no bill. Kept in the state rather than
+   * rolled at resolution time because the prime minister has to be able to read
+   * the three before committing the turn they are chosen in.
+   */
+  bill: Bill | null;
+  /** Statutes in force, tilting the ballot until they lapse. */
+  statutes: Statute[];
+  /** How pleased each party is, by key. Absent means indifferent. */
+  moods: Record<string, Mood>;
+  /** Everything that has passed, oldest first. */
+  lawsPassed: PassedLaw[];
+
   rngState: number;
   seed: number;
   winner: string | null;
   epilogue: string | null;
+}
+
+/** The three bills a prime minister may choose between this year. */
+export interface Bill {
+  /** The prime minister, who is the only one who gets to choose. */
+  playerKey: string;
+  /** Law ids, three of them, drawn from what is available on this board. */
+  options: string[];
+}
+
+/**
+ * A law still tilting the ballot.
+ *
+ * Laws that change the politics do not change it on the day they pass: they
+ * change what the country votes for at the next election, and for a while
+ * after. So the effect is stored as a standing multiplier on each bloc's vote
+ * and consumed by {@link ../engine/campaign.rollSeats} whenever the country
+ * actually votes, rather than being applied to seats the moment it passes.
+ */
+export interface Statute {
+  lawId: string;
+  title: string;
+  /** Vote-weight multiplier per bloc; 1, or absent, is no change. */
+  tilt: Partial<Record<Bloc, number>>;
+  /** The turn it stops applying. */
+  until: number;
+}
+
+/**
+ * How a party feels about the government, and what that costs.
+ *
+ * A partner that has just been given what it wanted is harder to buy away from
+ * you; one that has just been legislated against is cheaper. Rather than model
+ * gratitude, the mood simply scales what the package holding the party is
+ * counted as being worth — see {@link packageValue}. An angry party behaves
+ * exactly as if the portfolios it was promised had shrunk, which is the same
+ * thing from every seat at the table.
+ */
+export interface Mood {
+  /** Added to the multiplier on the package: -0.4 is angry, +0.3 is pleased. */
+  delta: number;
+  /** The turn it wears off. */
+  until: number;
+  /** The law that caused it, for the tooltip. */
+  because: string;
+}
+
+export interface PassedLaw {
+  id: string;
+  title: string;
+  turn: number;
+  parliament: number;
+  /** The player whose government passed it. */
+  by: string;
 }
 
 export const clamp = (value: number, low: number, high: number): number =>
@@ -370,14 +459,124 @@ export const ministryByKey = (state: GameState, key: string): Ministry | undefin
 export const valueOf = (state: GameState, ministries: readonly string[]): number =>
   ministries.reduce((sum, key) => sum + (ministryByKey(state, key)?.budget ?? 0), 0);
 
-/** What the party is currently being paid to stay where it is. */
-export const packageValue = (state: GameState, partyKey: string): number =>
+/**
+ * How pleased a party is right now: 0 when nothing has been done to it.
+ *
+ * Read rather than trusted, because a mood lapses on a turn counter and
+ * nothing sweeps the record every turn.
+ */
+export const moodOf = (state: GameState, partyKey: string): Mood | null => {
+  const mood = state.moods?.[partyKey];
+  return mood && mood.until > state.turn ? mood : null;
+};
+
+/**
+ * What the party is currently being paid to stay where it is.
+ *
+ * Not the same as what the portfolios are worth. A law can leave a partner
+ * delighted or furious, and a furious one counts the same package for less —
+ * which is the whole of what a mood does. Every scale that matters runs through
+ * this one function: the incumbent's standing bid in {@link
+ * ../engine/allocation.resolveRound}, what a bot thinks it has to beat, and the
+ * price printed on the card. So an angry partner really is cheaper to poach,
+ * everywhere at once, without anything else having heard of moods.
+ */
+export const packageValue = (state: GameState, partyKey: string): number => {
+  const raw = valueOf(state, state.parties[partyKey]?.package ?? []);
+  const mood = moodOf(state, partyKey);
+  if (!mood || raw === 0) return raw;
+  // A furious party is still holding something: the discount cannot zero a
+  // package out, or a single law would hand every partner away for one shekel.
+  return Math.max(1, Math.round(raw * (1 + mood.delta)));
+};
+
+/** Portfolios shown as a party's own, before its mood is applied. */
+export const packageFace = (state: GameState, partyKey: string): number =>
   valueOf(state, state.parties[partyKey]?.package ?? []);
+
+/**
+ * The size of party that would have to be given the entire cabinet.
+ *
+ * The dial on how much of your own hand your own list eats. At 65 a party that
+ * is within a few seats of a majority on its own has nothing left to offer
+ * anybody — which is the right shape: the closer you are to not needing
+ * partners, the less you can pay them, and a giant list is not automatically a
+ * government. Below that it scales straight down, so a 30-seat party keeps
+ * about half the table and a 6-seat one keeps a couple of small offices.
+ *
+ * It is also the game's only handicap, and the reason it is worth having one:
+ * before this, leading the largest list was strictly better than leading a
+ * small one — the same eighteen portfolios to spend, and a head start of
+ * twenty mandates. Every player now spends a share of the cabinet on their own
+ * backbenchers in proportion to how big that head start is, so the small list
+ * comes to the table with more money and fewer seats. Whether picking Likud
+ * over Meretz is an advantage becomes a real question rather than an
+ * arithmetic one.
+ */
+export const HOME_SEATS_FOR_ALL = 65;
+
+/** Everything the cabinet is worth today; laws and cards move it. */
+export const cabinetValue = (state: GameState): number =>
+  state.ministries.reduce((sum, ministry) => sum + ministry.budget, 0);
+
+/**
+ * What a player's own party keeps for itself.
+ *
+ * A leader does not get to spend the whole cabinet on other people. Their own
+ * MKs want offices, and the bigger the list the more of them there are to
+ * satisfy — this is the single most reliable fact about Israeli coalition
+ * arithmetic, and until now the game had the leader treating their own
+ * backbenchers as free.
+ *
+ * The claim is a value, not a list: `seats / 65` of the whole cabinet, rounded.
+ * Which portfolios settle it is then the boring part, taken greedily from the
+ * top of the ladder — a party big enough to demand a third of the cabinet
+ * demands Defense and Finance, not Tourism and Science, and the small offices
+ * are what is left over to buy partners with. Greedy from the top also lands
+ * within a shekel or two of the target, because the ladder is dense at the
+ * bottom.
+ *
+ * Derived rather than stored, so it follows the seat count through every
+ * election without anything having to remember to recalculate it, and so a law
+ * that abolishes a ministry shrinks the claim along with the cabinet.
+ */
+export const reservedMinistries = (state: GameState, playerKey: string): string[] => {
+  const player = state.players.find((entry) => entry.key === playerKey);
+  const seats = player ? (state.parties[player.partyKey]?.seats ?? 0) : 0;
+  if (seats <= 0) return [];
+
+  const target = Math.round((cabinetValue(state) * seats) / HOME_SEATS_FOR_ALL);
+  if (target <= 0) return [];
+
+  const ladder = [...state.ministries].sort((a, b) => b.budget - a.budget);
+  const taken: string[] = [];
+  let spent = 0;
+  for (const ministry of ladder) {
+    if (spent >= target) break;
+    // Descending, and only what still fits. Never overshoot: the claim is a
+    // ceiling, and a party that wanted 71bn taking 75 would be taking the
+    // difference out of the partners it has not bought yet. On a ladder this
+    // dense — every value from 1 upward — taking what fits lands on the target
+    // exactly almost every time, and short by a shekel or two otherwise.
+    if (spent + ministry.budget <= target) {
+      taken.push(ministry.key);
+      spent += ministry.budget;
+    }
+  }
+  return taken;
+};
+
+/** What the player's own list is holding back, in billions. */
+export const reservedValue = (state: GameState, playerKey: string): number =>
+  valueOf(state, reservedMinistries(state, playerKey));
 
 /**
  * The ministries a player still has to spend.
  *
- * Everything they own, minus whatever is locked with the parties they hold.
+ * Everything they own, minus whatever is locked with the parties they hold and
+ * minus whatever their own list has claimed. A portfolio that is both promised
+ * to a partner and claimed by the home party is only lost once: it is already
+ * out of the hand, and the claim is satisfied by it sitting where it sits.
  */
 export const freeMinistries = (state: GameState, playerKey: string): string[] => {
   const locked = new Set(
@@ -385,8 +584,9 @@ export const freeMinistries = (state: GameState, playerKey: string): string[] =>
       .filter((party) => party.heldBy === playerKey)
       .flatMap((party) => party.package),
   );
+  const kept = new Set(reservedMinistries(state, playerKey));
   return state.ministries
-    .filter((ministry) => !locked.has(ministry.key))
+    .filter((ministry) => !locked.has(ministry.key) && !kept.has(ministry.key))
     .map((ministry) => ministry.key);
 };
 
@@ -458,4 +658,82 @@ export const refusalsAgainst = (state: GameState, party: Party, playerKey: strin
     .map((member) => member.key);
 
   return [...new Set([...carded, ...standing])];
+};
+
+/**
+ * One red line, seen from outside any particular bloc.
+ *
+ * {@link refusalsAgainst} answers the question the auction asks — "will this
+ * list sit with *me*" — and that is all the engine has ever needed. It is not
+ * the question a player asks while deciding what to buy: buying Otzma Yehudit
+ * is also a decision not to buy Ra'am, and nothing on the board said so until
+ * the whole map was drawn.
+ *
+ * The two kinds are genuinely different shapes, and the graph should not
+ * flatten them:
+ *
+ *   - a **standing** line falls out of where the two lists sit, is mutual by
+ *     construction, and never lapses;
+ *   - a **carded** line is a promise one leader made about one other party. It
+ *     lapses on a timer, and it points one way — the list that made the promise
+ *     is the one that will not come, and the other will still come to it.
+ */
+export interface RedLine {
+  /** The list the line is drawn *by*. On a standing line, the lower key. */
+  from: string;
+  /** The list it is drawn *against*. On a standing line, the higher key. */
+  to: string;
+  kind: "standing" | "carded";
+  /** The turn a carded line lapses on; absent on a standing one. */
+  until?: number;
+}
+
+/**
+ * Every red line on the board, both kinds, deduplicated.
+ *
+ * Standing lines are emitted once per pair with the keys in sorted order, since
+ * neither end is the author. Carded ones are emitted per direction, because a
+ * pair really can have a line one way and not the other — and if both leaders
+ * have made the promise, that is two lines and the map says so.
+ */
+export const redLines = (state: GameState): RedLine[] => {
+  const parties = Object.values(state.parties);
+  const lines: RedLine[] = [];
+
+  for (let i = 0; i < parties.length; i += 1) {
+    for (let j = i + 1; j < parties.length; j += 1) {
+      const [a, b] = [parties[i], parties[j]];
+      if (standingRefusal(a, b)) {
+        const [from, to] = a.key < b.key ? [a.key, b.key] : [b.key, a.key];
+        lines.push({ from, to, kind: "standing" });
+      }
+    }
+  }
+
+  for (const party of parties) {
+    for (const refusal of party.refusals) {
+      if (refusal.until <= state.turn) continue;
+      if (!state.parties[refusal.partyKey]) continue;
+      // A card that only restates the politics is not a second line on the map.
+      if (standingRefusal(party, state.parties[refusal.partyKey])) continue;
+      lines.push({ from: party.key, to: refusal.partyKey, kind: "carded", until: refusal.until });
+    }
+  }
+
+  return lines;
+};
+
+/**
+ * The lists one party has a red line with, in either direction.
+ *
+ * Written for the party cards, where the useful phrasing is "this one will not
+ * sit with those" rather than a pair. Direction is kept in {@link redLines} for
+ * the map; here it is deliberately dropped, because owning either end of a
+ * carded line still costs you a partner somewhere.
+ */
+export const redLinesFor = (state: GameState, partyKey: string): string[] => {
+  const touching = redLines(state)
+    .filter((line) => line.from === partyKey || line.to === partyKey)
+    .map((line) => (line.from === partyKey ? line.to : line.from));
+  return [...new Set(touching)];
 };

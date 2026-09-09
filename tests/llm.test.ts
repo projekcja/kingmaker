@@ -56,14 +56,16 @@ describe("the briefing", () => {
   it("shows what a partner is being paid, and to whom", () => {
     const state = setup();
     const target = biddableParties(state)[0];
+    const before = freeMinistries(state, "you");
     target.heldBy = "bot1";
     target.package = ["defense", "science"];
 
     const text = describePosition(state, "you");
     expect(text).toContain("19bn");
     expect(text).toContain("beat that to take it");
-    // And those portfolios are still in your own hand, because they are yours.
-    expect(freeMinistries(state, "you")).toContain("defense");
+    // And your own hand is untouched by it, because what a rival is paying with
+    // is their copy of those portfolios, not yours.
+    expect(freeMinistries(state, "you")).toEqual(before);
   });
 
   it("never leaks a rival sealed offer", () => {
@@ -169,18 +171,21 @@ describe("the seat", () => {
   it("hands an illegal move back with its complaints and takes the correction", async () => {
     const state = setup();
     const target = biddableParties(state)[0];
+    // Out of the hand the player actually has: the top of the ladder belongs to
+    // their own list, and offering it would be a second, different complaint.
+    const [one, two, three, four] = freeMinistries(state, "you");
     const replies = [
       // Four tables is one too many.
       asJson({
         bids: [
-          { partyKey: target.key, ministries: ["defense"] },
-          { partyKey: biddableParties(state)[1].key, ministries: ["finance"] },
-          { partyKey: biddableParties(state)[2].key, ministries: ["health"] },
-          { partyKey: biddableParties(state)[3].key, ministries: ["justice"] },
+          { partyKey: target.key, ministries: [one] },
+          { partyKey: biddableParties(state)[1].key, ministries: [two] },
+          { partyKey: biddableParties(state)[2].key, ministries: [three] },
+          { partyKey: biddableParties(state)[3].key, ministries: [four] },
         ],
         withdrawFrom: [],
       }),
-      asJson({ bids: [{ partyKey: target.key, ministries: ["defense"] }], withdrawFrom: [] }),
+      asJson({ bids: [{ partyKey: target.key, ministries: [one] }], withdrawFrom: [] }),
     ];
 
     const seen: Array<Array<{ role: string; content: string }>> = [];
@@ -192,7 +197,7 @@ describe("the seat", () => {
     const move = await strategy(state, "you");
     expect(move.attempts).toBe(2);
     expect(move.gaveUp).toBe(false);
-    expect(move.offer.bids).toEqual([{ partyKey: target.key, ministries: ["defense"] }]);
+    expect(move.offer.bids).toEqual([{ partyKey: target.key, ministries: [one] }]);
     // The second call was told exactly what was wrong with the first.
     expect(seen[1].at(-1)?.content).toContain("3 parties a week");
   });

@@ -347,7 +347,7 @@ describe("reveal", () => {
     const html = renderToString(
       <Reveal
         state={state}
-        result={{ turn: 1, parties: [], withdrawals: [], cards: [] }}
+        result={{ turn: 1, parties: [], withdrawals: [], cards: [], laws: [] }}
         onClose={noop}
       />,
     );

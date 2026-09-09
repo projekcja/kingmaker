@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { CSSProperties } from "react";
 
+import { partyHistory } from "../engine/history";
 import { BLOC_LABEL, CHAMBERS, DEFAULT_CHAMBER, chamberById } from "../engine/parties";
 import type { PlayerKind } from "../engine/types";
 import { YEARS_TO_WIN } from "../engine/types";
@@ -51,6 +52,13 @@ export const Setup = ({ onStart, chamber: opening = DEFAULT_CHAMBER }: Props) =>
   // The list that actually formed the government after this election, if one
   // did. Looked up rather than stored twice, so the two can never disagree.
   const formed = chamber.parties.find((party) => party.key === chamber.outcome?.formedBy) ?? null;
+
+  // The list you are about to lead, and what it actually was. The seat count
+  // and the bloc colour are the two facts the game itself uses; neither is the
+  // reason anyone picks Rafi over Mapai, so the note goes under the grid where
+  // the choice is still being made rather than in a tooltip nobody opens.
+  const leadingProfile = ranked.find((profile) => profile.key === leading) ?? ranked[0];
+  const leadingHistory = partyHistory(leadingProfile.key);
 
   return (
     <div className="setup">
@@ -149,6 +157,25 @@ export const Setup = ({ onStart, chamber: opening = DEFAULT_CHAMBER }: Props) =>
             </button>
           ))}
         </div>
+
+        {/* Reads out of a table keyed by party rather than by chamber, so the
+            same note follows Likud across all fourteen of the Knessets it has
+            contested. It says what the list was, not how this particular
+            election went — that is the outcome line further up the screen. */}
+        {leadingHistory && (
+          <div className="party-note" aria-live="polite">
+            <div className="party-note-head">
+              <span className="party-note-name">{leadingProfile.name}</span>
+              <span
+                className="party-note-bloc"
+                style={{ color: BLOC_COLOUR[leadingProfile.bloc] }}
+              >
+                {BLOC_LABEL[leadingProfile.bloc]} · {leadingProfile.baseSeats} seats
+              </span>
+            </div>
+            <p>{leadingHistory}</p>
+          </div>
+        )}
       </div>
 
       <div className="setup-block">

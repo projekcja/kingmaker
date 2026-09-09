@@ -14,6 +14,7 @@
 import { offerFor } from "../bots";
 import { applyRound, applyWithdrawals, resolveRound } from "./allocation";
 import { drawCard, expireRefusals, unusedName } from "./deck";
+import { LAWS, ballotTilt, drawBill, enactLaw, expireLegislation, lawById } from "./laws";
 import { MINISTRIES } from "./ministries";
 import type { PartyProfile } from "./parties";
 import {
@@ -38,6 +39,7 @@ import {
   FORMING_DEADLINE,
   TERM_LENGTH,
   YEARS_TO_WIN,
+  blocParties,
   blocSeats,
   TheList,
   clamp,
@@ -155,6 +157,10 @@ export const newCampaign = (options: CampaignOptions = {}): GameState => {
     log: [],
     lastTurn: null,
     lastElection: null,
+    bill: null,
+    statutes: [],
+    moods: {},
+    lawsPassed: [],
     rngState: rng.state,
     seed,
     winner: null,
@@ -217,6 +223,57 @@ export const applyAction = (input: GameState, action: Action): ActionResult => {
 };
 
 /**
+ * Which bill the prime minister actually puts, human or otherwise.
+ *
+ * A human's choice rides in on their sealed offer, and is re-checked against
+ * the order paper rather than trusted: a replayed action from an older campaign
+ * could name a law that was never on offer, and the answer to that is to pass
+ * nothing rather than to legislate something nobody chose.
+ *
+ * A bot scores the paper against its own politics — its list's bloc and its
+ * partners' — using the `favours`/`harms` summaries rather than reading the
+ * effects, which are closures. It abstains when nothing on the paper is
+ * actually good for it, which is a real move and stops the rivals passing
+ * hostile legislation against themselves for want of anything better to do.
+ */
+const chosenLaw = (state: GameState, rng: Rng, playerKey: string): string | null => {
+  const bill = state.bill;
+  if (!bill || bill.options.length === 0) return null;
+
+  const player = playerOf(state, playerKey);
+  if (player.kind === "human") {
+    const wanted = state.offers[playerKey]?.law ?? null;
+    return wanted && bill.options.includes(wanted) ? wanted : null;
+  }
+
+  // What this bot's coalition is made of, weighted by seats: a law that helps
+  // the bloc holding most of its mandates is worth more than one that helps a
+  // three-seat partner.
+  const weight = new Map<string, number>();
+  for (const party of blocParties(state, playerKey)) {
+    weight.set(party.bloc, (weight.get(party.bloc) ?? 0) + party.seats);
+  }
+  const total = [...weight.values()].reduce((sum, seats) => sum + seats, 0) || 1;
+
+  const scored = bill.options
+    .map((id) => LAWS.find((law) => law.id === id))
+    .filter((law): law is NonNullable<typeof law> => Boolean(law))
+    .map((law) => {
+      let score = law.kind === "cabinet" ? 0.35 : 0;
+      for (const bloc of law.favours ?? []) score += (weight.get(bloc) ?? 0) / total;
+      for (const bloc of law.harms ?? []) score -= (weight.get(bloc) ?? 0) / total;
+      // A mood law that pleases the coalition is always worth something to the
+      // party holding the coalition together.
+      if (law.kind === "mood" && law.id === "coalition-funds") score += 0.6;
+      return { law, score: score + rng.range(-0.12, 0.12) };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  return best && best.score > 0.05 ? best.law.id : null;
+};
+
+/**
  * Run one whole turn: bids, cards, then whatever the board now implies.
  */
 const resolveTurn = (state: GameState): TurnResult => {
@@ -264,6 +321,31 @@ const resolveTurn = (state: GameState): TurnResult => {
     if (state.primeMinister) playerOf(state, state.primeMinister).yearsInPower += 1;
   }
 
+  // The government's one act of the year, after the bidding and before the
+  // news. After, because a law that abolishes a ministry would otherwise pull
+  // portfolios out from under offers already on the table; before the card,
+  // because a card is what the world does back.
+  const laws: TurnResult["laws"] = [];
+  if (state.bill) {
+    const chooser = state.bill.playerKey;
+    const chosen = chosenLaw(state, rng, chooser);
+    if (chosen) {
+      const text = enactLaw(state, rng, chooser, chosen);
+      if (text) {
+        const title = lawById(chosen)?.title ?? chosen;
+        laws.push({ playerKey: chooser, lawId: chosen, title, text });
+        log(state, "deal", `${title} — ${text}`);
+      }
+    } else {
+      log(
+        state,
+        "info",
+        `${playerOf(state, chooser).name} puts nothing on the order paper this year.`,
+      );
+    }
+    state.bill = null;
+  }
+
   // One card a round, not one for each player. Dealing everybody in meant a
   // three-handed game got three times the chaos, and the news drowned out the
   // bidding it was supposed to interrupt. The drawer still matters -- a red
@@ -280,7 +362,18 @@ const resolveTurn = (state: GameState): TurnResult => {
   expireRefusals(state);
   advancePhase(state, rng);
 
-  const result: TurnResult = { turn: state.turn, parties, withdrawals, cards };
+  expireLegislation(state);
+
+  // Next year's order paper, drawn once the board has settled so the bills on
+  // it are the ones that make sense against the government that actually
+  // stands. Only while governing: a repair turn is a crisis, and a Knesset
+  // with no government legislates nothing.
+  state.bill =
+    state.phase === "governing" && state.primeMinister
+      ? { playerKey: state.primeMinister, options: drawBill(state, rng, state.primeMinister) }
+      : null;
+
+  const result: TurnResult = { turn: state.turn, parties, withdrawals, cards, laws };
   state.lastTurn = result;
   state.offers = {};
   state.turn += 1;
@@ -430,7 +523,10 @@ export const runElection = (
   const ballot = realign(state, rng);
 
   const before = state.parties;
-  const seats = rollSeats(rng, protectedKeys, standingSeats(before));
+  // Whatever the statutes in force have done to the country's politics. This
+  // is the only place a law touches a seat: it changes the vote, and the vote
+  // is counted here.
+  const seats = rollSeats(rng, protectedKeys, standingSeats(before), ballotTilt(state));
 
   // The chamber that just sat is the thing being re-elected, so every list
   // carries its own identity through: a party invented by a split is a real
@@ -718,12 +814,21 @@ export const rollSeats = (
   rng: Rng,
   protectedKeys: Set<string>,
   baseline: Record<string, number> = baselineSeats(),
+  /**
+   * Per-list multipliers on the vote, from the laws in force.
+   *
+   * Applied to the weight rather than to the resulting seats, so a tilt moves
+   * mandates between lists instead of inventing them — the Knesset is still
+   * 120 afterwards, and a bloc that gains gains at somebody's expense. Empty by
+   * default, which is the old behaviour exactly.
+   */
+  tilt: Record<string, number> = {},
 ): Record<string, number> => {
   const weights = Object.entries(baseline)
     .filter(([, seats]) => seats > 0)
     .map(([key, seats]) => ({
       key,
-      weight: seats * rng.range(0.6, 1.45),
+      weight: seats * rng.range(0.6, 1.45) * (tilt[key] ?? 1),
     }));
 
   const total = weights.reduce((sum, entry) => sum + entry.weight, 0);

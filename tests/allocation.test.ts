@@ -10,7 +10,9 @@ import {
   OFFERS_PER_TURN,
   biddableParties,
   blocSeats,
+  cabinetValue,
   freeMinistries,
+  reservedValue,
   packageValue,
   standingRefusal,
   valueOf,
@@ -37,23 +39,22 @@ describe("validation", () => {
     expect(OFFERS_PER_TURN).toBe(3);
 
     // What goes on a table is not capped: the whole hand on one is a legal move.
-    const everything = state.ministries.map((ministry) => ministry.key);
+    // The hand, not the cabinet — your own list has already taken its share off
+    // the top, and those portfolios were never yours to offer.
+    const everything = freeMinistries(state, "you");
     expect(validateOffer(state, "you", offer([[a.key, everything]]))).toEqual([]);
 
+    const [one, two, three, four] = everything;
     expect(
-      validateOffer(
-        state,
-        "you",
-        offer([[a.key, ["defense"]], [b.key, ["finance"]], [c.key, ["health"]]]),
-      ),
+      validateOffer(state, "you", offer([[a.key, [one]], [b.key, [two]], [c.key, [three]]])),
     ).toEqual([]);
 
     // A fourth party is one table too many, however little is put on it.
     const tooMany = offer([
-      [a.key, ["defense"]],
-      [b.key, ["finance"]],
-      [c.key, ["health"]],
-      [d.key, ["justice"]],
+      [a.key, [one]],
+      [b.key, [two]],
+      [c.key, [three]],
+      [d.key, [four]],
     ]);
     expect(validateOffer(state, "you", tooMany).some((p) => p.code === "too-many")).toBe(true);
   });
@@ -192,6 +193,7 @@ describe("resolution", () => {
     // bot1 has its portfolio back, and yours is spent.
     expect(freeMinistries(state, "bot1")).toContain("justice");
     expect(freeMinistries(state, "you")).not.toContain("defense");
+    expect(freeMinistries(state, "bot1")).not.toContain("defense");
   });
 
   it("does not charge for an offer that lost", () => {
@@ -270,7 +272,11 @@ describe("withdrawal", () => {
     ]);
     expect(state.parties[target.key].heldBy).toBeNull();
     expect(state.parties[target.key].package).toEqual([]);
-    expect(valueOf(state, freeMinistries(state, "you"))).toBe(171);
+    // Everything is back in hand: the whole cabinet, less the share the
+    // player's own list holds for its own members.
+    expect(valueOf(state, freeMinistries(state, "you"))).toBe(
+      cabinetValue(state) - reservedValue(state, "you"),
+    );
   });
 });
 

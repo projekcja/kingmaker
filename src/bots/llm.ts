@@ -28,6 +28,7 @@ import {
   freeMinistries,
   ministryByKey,
   packageValue,
+  reservedMinistries,
   playerOf,
   refusalsAgainst,
   valueOf,
@@ -160,6 +161,23 @@ export const describePosition = (state: GameState, playerKey: string): string =>
     );
   }
   lines.push("");
+
+  // What the player's own list has already claimed. It is not in the hand and
+  // never will be, so a model that is not told about it spends the whole game
+  // trying to offer portfolios it does not have.
+  const kept = reservedMinistries(state, playerKey);
+  if (kept.length > 0) {
+    lines.push(
+      `YOUR OWN LIST KEEPS -- ${valueOf(state, kept)}bn, for its own members. Not available to offer.`,
+    );
+    for (const key of [...kept].sort(
+      (a, b) => (ministryByKey(state, b)?.budget ?? 0) - (ministryByKey(state, a)?.budget ?? 0),
+    )) {
+      const ministry = ministryByKey(state, key);
+      lines.push(`  ${pad(key, 18)} ${pad(ministry?.name ?? key, 24)} ${ministry?.budget ?? 0}bn`);
+    }
+    lines.push("");
+  }
 
   const hand = freeMinistries(state, playerKey);
   lines.push(`YOUR FREE HAND -- ${valueOf(state, hand)}bn`);
