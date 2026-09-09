@@ -169,11 +169,20 @@ times the news, and the deck drowned out the bidding it was there to interrupt. 
 over per round, by one player picked at random — which still matters, because a red line is drawn
 against whoever turned it over.
 
-**Ideology lives here and nowhere else.** Every party carries its real bloc and a left–right
-number, and the bidding never reads either. Cards do: a red-line card records a concrete
-party-to-party refusal, which resolution then honours. Adding or cutting the ideological cards is
-the dial for how much politics matters, and it moves nothing else. A test scrambles every party's
-politics and asserts no bidding outcome changes.
+**Ideology decides who will deal, never what they cost.** Every party carries its real bloc and a
+left–right number, and the price is blind to both: a list that will sit with you is weighed on the
+money alone. What politics decides is whether it will sit with you at all.
+
+Two kinds of red line, honoured identically. A card writes a concrete party-to-party refusal that
+lapses on a timer. A **standing** refusal is not written down anywhere: lists 16 or more apart on
+the axis will not serve together, and an Arab list will not sit with a list at 6 or further right.
+Those fall out of where the lists sit, so a board's geography matters before a single card has been
+turned over — and they survive an election, a merger and a split without anything having to
+remember to carry them across, which is why they are computed rather than stored.
+
+A test scrambles politics inside the range where no standing refusal can arise and asserts no
+bidding outcome changes, which is the part that has to stay true: the auction never prices a
+party by its opinions.
 
 ## Layout
 

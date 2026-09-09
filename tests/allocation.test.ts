@@ -5,11 +5,14 @@ import { newCampaign } from "../src/engine/campaign";
 import { PARTY_PROFILES } from "../src/engine/parties";
 import type { GameState, Offer } from "../src/engine/types";
 import {
+  ARAB_REFUSES_RIGHT_OF,
+  IRRECONCILABLE,
   OFFERS_PER_TURN,
   biddableParties,
   blocSeats,
   freeMinistries,
   packageValue,
+  standingRefusal,
   valueOf,
 } from "../src/engine/types";
 
@@ -271,8 +274,8 @@ describe("withdrawal", () => {
   });
 });
 
-describe("ideology stays out of the bidding", () => {
-  it("resolves identically when every party's politics is scrambled", () => {
+describe("ideology decides who will deal, never what they cost", () => {
+  it("prices a party the same however its politics is scrambled", () => {
     const state = setup(4242);
     const [a, b] = biddableParties(state);
     grant(state, a.key, "bot1", ["justice"]);
@@ -280,14 +283,84 @@ describe("ideology stays out of the bidding", () => {
       you: offer([[a.key, ["defense"]], [b.key, ["finance"]]]),
       bot1: offer([[b.key, ["education"]]]),
     };
+
+    // Politics is scrambled inside the band where no standing refusal can
+    // arise -- one bloc, and never more than four apart on the axis -- so what
+    // is being measured is the price rather than who is willing to deal.
+    const settle = (leftRight: (index: number) => number) =>
+      Object.values(state.parties).forEach((party, index) => {
+        party.bloc = "centre";
+        party.leftRight = leftRight(index);
+      });
+
+    settle((index) => (index % 5) - 2);
     const before = resolveRound(state);
 
-    const blocs = PARTY_PROFILES.map((profile) => profile.bloc).reverse();
-    Object.values(state.parties).forEach((party, index) => {
-      party.bloc = blocs[index % blocs.length];
-      party.leftRight = -party.leftRight;
-    });
-
+    settle((index) => 2 - (index % 5));
     expect(resolveRound(state)).toEqual(before);
+  });
+});
+
+describe("standing red lines", () => {
+  /** The list the human seat leads, which is always in their bloc. */
+  const ownParty = (state: GameState) =>
+    state.parties[state.players.find((player) => player.key === "you")!.partyKey];
+
+  it("is mutual, and reads nothing but where the two lists sit", () => {
+    const farLeft = { bloc: "left", leftRight: -9 } as const;
+    const farRight = { bloc: "right", leftRight: 9 } as const;
+    expect(farRight.leftRight - farLeft.leftRight).toBeGreaterThanOrEqual(IRRECONCILABLE);
+    expect(standingRefusal(farLeft, farRight)).toBe(true);
+    expect(standingRefusal(farRight, farLeft)).toBe(true);
+
+    // Neighbours deal, however different their politics is said to be.
+    expect(standingRefusal({ bloc: "centre", leftRight: 0 }, { bloc: "right", leftRight: 6 })).toBe(
+      false,
+    );
+  });
+
+  it("beats any amount of money across an irreconcilable gulf", () => {
+    const state = setup();
+    const target = biddableParties(state)[0];
+    ownParty(state).bloc = "left";
+    ownParty(state).leftRight = -9;
+    target.bloc = "right";
+    target.leftRight = 9;
+
+    const everything = state.ministries.map((ministry) => ministry.key);
+    state.offers = { you: offer([[target.key, everything]]) };
+
+    const result = resolveRound(state).find((entry) => entry.partyKey === target.key);
+    expect(result?.blocked).toContain("you");
+    expect(result?.newHolder).not.toBe("you");
+  });
+
+  it("keeps an Arab list out of a coalition with the right", () => {
+    const state = setup();
+    const target = biddableParties(state)[0];
+    ownParty(state).bloc = "right";
+    ownParty(state).leftRight = ARAB_REFUSES_RIGHT_OF;
+    target.bloc = "arab";
+    target.leftRight = -5;
+    // Eleven apart, so the gulf rule cannot fire and only the bloc rule can.
+    expect(Math.abs(ownParty(state).leftRight - target.leftRight)).toBeLessThan(IRRECONCILABLE);
+
+    state.offers = { you: offer([[target.key, state.ministries.map((m) => m.key)]]) };
+    const result = resolveRound(state).find((entry) => entry.partyKey === target.key);
+    expect(result?.blocked).toContain("you");
+  });
+
+  it("lets a list that will deal be bought normally", () => {
+    const state = setup();
+    const target = biddableParties(state)[0];
+    ownParty(state).bloc = "centre";
+    ownParty(state).leftRight = 1;
+    target.bloc = "centre";
+    target.leftRight = 3;
+
+    state.offers = { you: offer([[target.key, ["defense", "education"]]]) };
+    const result = resolveRound(state).find((entry) => entry.partyKey === target.key);
+    expect(result?.blocked ?? []).toHaveLength(0);
+    expect(result?.newHolder).toBe("you");
   });
 });

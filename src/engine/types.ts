@@ -394,15 +394,68 @@ export const freeBudget = (state: GameState, playerKey: string): number =>
   valueOf(state, freeMinistries(state, playerKey));
 
 /**
+ * How far apart two lists can be on the axis before neither will serve with the
+ * other. At 16 only the genuine extremes of a chamber reach it, so a board of
+ * mid-sized lists is untouched and a board with a far right and an Arab left is
+ * not.
+ */
+export const IRRECONCILABLE = 16;
+
+/**
+ * An Arab list will not sit with a list at least this far right.
+ *
+ * A simplification, and worth naming as one: the Joint List has never joined
+ * any coalition, but Ra'am sat in one in 2021, and the model has a single
+ * `arab` bloc covering both. The game takes the general case.
+ */
+export const ARAB_REFUSES_RIGHT_OF = 6;
+
+/** The politics of a list, which is all a standing refusal reads. */
+type Politics = Pick<Party, "bloc" | "leftRight">;
+
+/**
+ * Two lists that will not serve together whatever either is offered.
+ *
+ * Unlike a card's red line this is not written down anywhere and never lapses:
+ * it is a fact about where the two sit, so it survives an election, a merger
+ * and a split without anything having to remember to carry it across. That is
+ * the reason it is computed rather than stored — a refusal keyed to a party
+ * that stops existing has to be redirected, and one derived from politics
+ * simply follows the politics.
+ *
+ * Mutual by construction. A coalition contains both lists, so it does not
+ * matter which of them is the one being bought.
+ */
+export const standingRefusal = (a: Politics, b: Politics): boolean => {
+  if (Math.abs(a.leftRight - b.leftRight) >= IRRECONCILABLE) return true;
+  if (a.bloc === "arab" && b.leftRight >= ARAB_REFUSES_RIGHT_OF) return true;
+  if (b.bloc === "arab" && a.leftRight >= ARAB_REFUSES_RIGHT_OF) return true;
+  return false;
+};
+
+/**
  * Red lines standing between a party and a player's bloc.
  *
- * The refusals themselves were written by cards; resolution reads only this
- * list, never the party's politics, which is what keeps ideology out of the
- * auction.
+ * Two kinds, and resolution honours them identically. A card writes a concrete
+ * party-to-party refusal that lapses on a timer. A standing one is not written
+ * at all: it falls out of where the two lists sit, so the geography of a board
+ * matters before any card has been turned over.
+ *
+ * The price is still blind. Nothing here reaches the bidding — a party that
+ * will sit with you is weighed on the money alone, exactly as before; politics
+ * decides only whether it will sit with you at all.
  */
 export const refusalsAgainst = (state: GameState, party: Party, playerKey: string): string[] => {
-  const bloc = new Set(blocParties(state, playerKey).map((member) => member.key));
-  return party.refusals
+  const members = blocParties(state, playerKey);
+  const bloc = new Set(members.map((member) => member.key));
+
+  const carded = party.refusals
     .filter((refusal) => refusal.until > state.turn && bloc.has(refusal.partyKey))
     .map((refusal) => refusal.partyKey);
+
+  const standing = members
+    .filter((member) => member.key !== party.key && standingRefusal(party, member))
+    .map((member) => member.key);
+
+  return [...new Set([...carded, ...standing])];
 };

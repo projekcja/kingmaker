@@ -77,7 +77,12 @@ WINNING
 
 One card is drawn each turn, for one player. Cards split parties, invent or
 abolish a ministry, move mandates, or make one party refuse to sit with another.
-A refusal beats any amount of money.`;
+A refusal beats any amount of money.
+
+Some refusals are not from cards and never lapse: lists at opposite ends of the
+board will not serve together whatever they are offered, and an Arab list will
+not sit with the right. The board below marks every party that refuses you.
+Money cannot move one, so spend the turn on a party that will deal.`;
 
 /** The shape a reply has to arrive in. */
 export const REPLY_FORMAT = `Reply with JSON and nothing else:
