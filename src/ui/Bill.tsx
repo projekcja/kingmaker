@@ -12,7 +12,15 @@ import { statuteSummary } from "../engine/laws";
  * should decline the Conscription Law, and that is a play, not an abstention.
  *
  * It rides on the same commit as the bids: the whole turn goes in one envelope,
- * so the choice made here is not final until the week is ended.
+ * so the choice made here is not final until the year is ended.
+ *
+ * It sits at the bottom of the column rather than the top of the tray, where it
+ * first went. The board has one adjacency it cannot give up — the party cards
+ * and the portfolio chips, which a turn is played by moving between a dozen
+ * times — and a panel of four paragraphs above the chips put a scroll between
+ * them. This is read once and decided once, so it goes below, and the commit
+ * row carries a line naming whatever is pencilled in so a year's legislation
+ * is never silently skipped by somebody who does not scroll.
  */
 
 interface Props {
@@ -54,12 +62,12 @@ export const Bill = ({ state, chosen, onChoose, yours }: Props) => {
   );
 
   if (!bill || bill.options.length === 0) {
-    return standing.length > 0 ? <div className="bill">{inForce}</div> : null;
+    return standing.length > 0 ? <div className="bill" id="order-paper">{inForce}</div> : null;
   }
 
   if (!yours) {
     return (
-      <div className="bill">
+      <div className="bill" id="order-paper">
         <div className="bill-head">
           <span className="bill-title">The order paper</span>
           <span className="bill-note">the government's to move, not yours</span>
@@ -70,7 +78,7 @@ export const Bill = ({ state, chosen, onChoose, yours }: Props) => {
   }
 
   return (
-    <div className="bill">
+    <div className="bill" id="order-paper">
       <div className="bill-head">
         <span className="bill-title">The order paper</span>
         <span className="bill-note">one act of legislation this year</span>

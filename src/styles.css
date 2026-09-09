@@ -1502,3 +1502,14 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 }
 .kept-label { font-size: 11.5px; font-weight: 700; color: var(--dim); white-space: nowrap; }
 .kept-list { font-size: 11px; color: var(--dimmer); line-height: 1.4; }
+
+/* The order paper's stand-in in the commit row. It is a pointer, not a
+   control: the size of the text beside it, and it only moves the page. */
+.bill-cue {
+  padding: 3px 9px; border-radius: 8px;
+  font-size: 11.5px; font-weight: 700;
+  background: transparent;
+  border: 1px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+.bill-cue:hover { border-style: solid; }

@@ -365,6 +365,57 @@ describe("which side of the aisle you are on", () => {
     return state;
   };
 
+  /*
+   * The board has exactly one adjacency it cannot give up.
+   *
+   * A turn is played by moving between the party cards and the portfolio chips
+   * a dozen times — pick a party, tap what to put in front of it, pick the next
+   * one. Twice now a panel has been added between them and put a scroll in the
+   * middle of that loop: the red lines map first, then the order paper. Both
+   * are read once and then not again, so both belong under the commit row.
+   *
+   * Asserted on the order of the markup rather than on pixels, which is the
+   * part that actually decides it and the part a future panel would break.
+   */
+  it("keeps the party cards and the portfolio chips next to each other", () => {
+    const state = governing("you");
+    state.bill = { playerKey: "you", options: ["cost-of-living", "austerity"] };
+    const html = renderToString(<Board state={state} seat="you" onCommit={noop} />);
+
+    const at = (needle: string) => {
+      const index = html.indexOf(needle);
+      expect(index, `${needle} is not on the board`).toBeGreaterThan(-1);
+      return index;
+    };
+
+    const parties = at('class="parties"');
+    const chips = at('class="chips"');
+    const commit = at('class="commit-row"');
+    const orderPaper = at('id="order-paper"');
+    const redMap = at('class="redmap"');
+
+    // Nothing at all between the cards and the hand except the diary.
+    expect(parties).toBeLessThan(chips);
+    expect(html.slice(parties, chips)).not.toContain("order-paper");
+    expect(html.slice(parties, chips)).not.toContain('class="redmap"');
+
+    // The two read-once panels are below the button that ends the turn.
+    expect(commit).toBeLessThan(orderPaper);
+    expect(orderPaper).toBeLessThan(redMap);
+  });
+
+  it("names the pencilled-in bill in the commit row, so it cannot be missed", () => {
+    const state = governing("you");
+    state.bill = { playerKey: "you", options: ["cost-of-living"] };
+    const html = renderToString(<Board state={state} seat="you" onCommit={noop} />);
+    // Nothing chosen yet, and the row says so rather than staying silent.
+    expect(html).toContain("No bill this year");
+
+    // Somebody who is not the prime minister is not offered the cue at all.
+    const other = renderToString(<Board state={state} seat="bot1" onCommit={noop} />);
+    expect(other).not.toContain("No bill this year");
+  });
+
   it("dresses the government benches and the opposition differently", () => {
     const state = governing("you");
     const pm = renderToString(<Board state={state} seat="you" onCommit={noop} />);

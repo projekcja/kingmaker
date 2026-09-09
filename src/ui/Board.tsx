@@ -3,6 +3,7 @@ import type { CSSProperties, KeyboardEvent } from "react";
 
 import { availableMinistries, validateOffer } from "../engine/allocation";
 import { ordinal } from "../engine/campaign";
+import { lawById } from "../engine/laws";
 import { BLOC_LABEL, MAJORITY } from "../engine/parties";
 import type { GameState, Offer } from "../engine/types";
 import {
@@ -467,10 +468,6 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
         </div>
 
         <div className="tray" ref={trayRef}>
-          {/* The government's one act of the year, above the diary because it
-              is the only thing on this screen that is not an auction. */}
-          <Bill state={state} chosen={law} onChoose={setLaw} yours={inPower} />
-
           {/* The diary. Three meetings is the only thing the game rations, and
               it was being reported as "0 of 3 tables" in the corner — a number
               nobody reads until they have already been refused by it. Drawn as
@@ -620,6 +617,22 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
             <span className="need">
               {Math.max(0, MAJORITY - blocSeats(state, human.key))} more mandates for a majority
             </span>
+            {/* The order paper is below the fold, so the one thing that must
+                not be missed comes back up here as a line: what is pencilled
+                in, and a way down to change it. */}
+            {inPower && state.bill && state.bill.options.length > 0 && (
+              <button
+                type="button"
+                className="bill-cue"
+                onClick={() =>
+                  document
+                    .getElementById("order-paper")
+                    ?.scrollIntoView({ behavior: "smooth", block: "center" })
+                }
+              >
+                {law ? `Bill: ${lawById(law)?.title ?? law}` : "No bill this year"}
+              </button>
+            )}
             {problems.length > 0 && (
               <span role="status" aria-live="polite" className="problem">
                 {problems[0].message}
@@ -627,6 +640,19 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
             )}
           </div>
         </div>
+
+        {/*
+         * The government's one act of the year.
+         *
+         * It sat at the top of the tray to begin with, being the only thing on
+         * the screen that is not an auction — and pushed the portfolio chips a
+         * scroll away from the party cards, which is the one adjacency the
+         * board cannot give up. Down here with the map instead: both are read
+         * once before a turn rather than tapped back and forth, and the commit
+         * row carries a line saying what is pencilled in so the year's
+         * legislation cannot be missed by somebody who never scrolls.
+         */}
+        <Bill state={state} chosen={law} onChoose={setLaw} yours={inPower} />
 
         {/*
          * The whole map of who refuses whom, at the very bottom of the column.
