@@ -56,8 +56,9 @@ export const Setup = ({ onStart, chamber: opening = DEFAULT_CHAMBER }: Props) =>
       <h1>Kingmaker</h1>
       <p className="lede">
         Sixty-one mandates buys you a government. Ten years in office wins the whole thing.
-        Every week you hand out eighteen ministries, everyone bids at once, and each party
-        goes to whoever offered most.
+        Every week you can sit down with <b>three parties</b> and put as much of your
+        eighteen ministries in front of each as you like. Everyone bids at once, and each
+        party goes to whoever offered it most.
       </p>
 
       <div className="setup-block">

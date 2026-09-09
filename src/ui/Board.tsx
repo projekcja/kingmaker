@@ -70,7 +70,13 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
   const sharing = state.players.filter((player) => player.kind === "human").length > 1;
   const hand = availableMinistries(state, human.key, offer);
   const assigned = new Set(Object.values(bids).flat());
-  const courting = offer.bids.length;
+  // The week's diary: which parties already have something in front of them.
+  // This is the only resource the game actually rations, and until it was drawn
+  // the rule was invisible — tapping a portfolio for a fourth party silently
+  // did nothing at all.
+  const booked = offer.bids.map((bid) => bid.partyKey);
+  const courting = booked.length;
+  const diaryFull = courting >= OFFERS_PER_TURN;
 
   const toggleMinistry = (key: string) => {
     setBids((current) => {
@@ -107,6 +113,14 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
         }
         return currentBids;
       });
+      return next;
+    });
+
+  /** Give a meeting back: clears that party's table, freeing the slot. */
+  const clearTable = (partyKey: string) =>
+    setBids((current) => {
+      const next = { ...current };
+      delete next[partyKey];
       return next;
     });
 
@@ -217,7 +231,7 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
             return (
               <div
                 key={party.key}
-                className={`party-card ${active === party.key ? "active" : ""} ${blocked.length ? "blocked" : ""} ${pulling ? "pulling" : ""}`}
+                className={`party-card ${active === party.key ? "active" : ""} ${blocked.length ? "blocked" : ""} ${pulling ? "pulling" : ""} ${diaryFull && pending.length === 0 ? "shut" : ""}`}
                 // The bloc colour is handed to the card as a custom property
                 // rather than painted onto one element, so the spine, the wash
                 // behind the seat count and the hover glow are all the same
@@ -238,7 +252,15 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
                     {mine ? "yours" : "bought"}
                   </span>
                 )}
-                <button className="party-hit" onClick={() => setActive(party.key)}>
+                <button
+                className="party-hit"
+                onClick={() => setActive(party.key)}
+                title={
+                  diaryFull && pending.length === 0
+                    ? `No meetings left this ${forming ? "week" : "year"} — cancel one to court ${party.name}`
+                    : undefined
+                }
+              >
                   <div className="party-head">
                     <span className="party-seats">{party.seats}</span>
                     <span className="party-name">{party.name}</span>
@@ -295,14 +317,69 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
         </div>
 
         <div className="tray">
+          {/* The diary. Three meetings is the only thing the game rations, and
+              it was being reported as "0 of 3 tables" in the corner — a number
+              nobody reads until they have already been refused by it. Drawn as
+              the slots themselves, what is spent and what is left is the first
+              thing on the tray rather than a footnote on it. */}
+          <div className="diary">
+            <div className="diary-head">
+              <span className="diary-title">
+                {forming ? "This week's diary" : "This year's diary"}
+              </span>
+              <span className={`diary-count ${diaryFull ? "full" : ""}`}>
+                {diaryFull
+                  ? "no meetings left"
+                  : `${OFFERS_PER_TURN - courting} of ${OFFERS_PER_TURN} still free`}
+              </span>
+            </div>
+
+            <div className="diary-slots">
+              {Array.from({ length: OFFERS_PER_TURN }, (_, slot) => {
+                const partyKey = booked[slot];
+                if (!partyKey) {
+                  return (
+                    <span key={slot} className="diary-slot free">
+                      free
+                    </span>
+                  );
+                }
+                return (
+                  <button
+                    key={slot}
+                    className="diary-slot booked"
+                    onClick={() => clearTable(partyKey)}
+                    title={`Cancel the meeting with ${state.parties[partyKey]?.name}`}
+                  >
+                    <span className="diary-slot-name">{state.parties[partyKey]?.name}</span>
+                    <span className="diary-slot-value">
+                      {valueOf(state, bids[partyKey] ?? [])}bn
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <p className="diary-rule">
+              {/* One interpolation, so the number and the noun stay one text node:
+                  split, React puts a comment between them and the sentence is no
+                  longer searchable in the rendered page. */}
+              You can sit down with <b>{`${OFFERS_PER_TURN} parties`}</b>{" "}
+              {forming ? "a week" : "a year"}, and that is the whole restriction — put as
+              much of your hand in front of each as you like. The diary is the scarce
+              thing, not the money.
+            </p>
+          </div>
+
           <div className="tray-head">
-            <span>
-              {active
-                ? `Offering to ${state.parties[active]?.name}`
-                : "Pick a party, then tap portfolios"}
+            <span className={diaryFull && active && !booked.includes(active) ? "warn" : ""}>
+              {diaryFull && active && !booked.includes(active)
+                ? `The diary is full. Cancel a meeting to sit down with ${state.parties[active]?.name}.`
+                : active
+                  ? `Offering to ${state.parties[active]?.name}`
+                  : "Pick a party, then tap portfolios"}
             </span>
-            <span className={courting > OFFERS_PER_TURN ? "warn" : "ok"}>
-              {courting} of {OFFERS_PER_TURN} tables ·{" "}
+            <span className="ok">
               {valueOf(state, hand.filter((k) => !assigned.has(k)))}bn still in hand
             </span>
           </div>

@@ -5,7 +5,13 @@ import { greedyOffer } from "../src/bots";
 import { applyAction, newCampaign } from "../src/engine/campaign";
 import { Rng } from "../src/engine/rng";
 import type { GameState } from "../src/engine/types";
-import { FORMING_DEADLINE, TERM_LENGTH, biddableParties, ministryByKey } from "../src/engine/types";
+import {
+  FORMING_DEADLINE,
+  OFFERS_PER_TURN,
+  TERM_LENGTH,
+  biddableParties,
+  ministryByKey,
+} from "../src/engine/types";
 import {
   BLOC_LABEL,
   CHAMBERS,
@@ -189,7 +195,34 @@ describe("board", () => {
     for (const ministry of state.ministries) {
       expect(html).toContain(escapeHtml(ministry.name));
     }
-    expect(html).toContain("tables");
+    // And says, in words, how many parties a turn may be courted at all.
+    expect(html).toContain(`${OFFERS_PER_TURN} parties`);
+  });
+
+  it("draws the offer limit as a diary rather than reporting it as a number", () => {
+    const state = newCampaign({ seed: 106 });
+    const html = renderToString(<Board state={state} onCommit={noop} />);
+
+    // The one resource the game rations. It used to be "0 of 3 tables" in grey
+    // in the corner -- a number nobody reads until it has already refused them,
+    // and the refusal was silent. One slot per meeting, so what is left is
+    // visible before it is spent.
+    expect(html.match(/class="diary-slot free"/g) ?? []).toHaveLength(OFFERS_PER_TURN);
+    expect(html).toContain(`${OFFERS_PER_TURN} of ${OFFERS_PER_TURN} still free`);
+    expect(html).toContain("This week&#x27;s diary");
+
+    // The restriction itself, spelled out where it is being spent.
+    expect(html).toContain("the whole restriction");
+    expect(html).toContain("The diary is the scarce thing");
+  });
+
+  it("counts the diary in the phase's own unit", () => {
+    const state = playTurns(newCampaign({ seed: 5, humanParty: "likud", bots: ["random"] }), 12);
+    if (state.phase !== "governing") return;
+    const html = renderToString(<Board state={state} seat="you" onCommit={noop} />);
+    // A turn is a year once a government sits, and the diary is a year's.
+    expect(html).toContain("This year&#x27;s diary");
+    expect(html).not.toContain("This week&#x27;s diary");
   });
 
   it("switches its language once a government is sitting", () => {
