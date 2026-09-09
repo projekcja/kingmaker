@@ -1,0 +1,42 @@
+# Type-check and play the whole test suite on every push and pull request.
+#
+# The rules are a pure module and the tests run headless in about two seconds,
+# so there is no reason for a broken commit to reach the branch, let alone the
+# published game.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push supersedes the first: nothing is learned from finishing a run
+# against a commit that is already history.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # `ci` rather than `install`: the lockfile is the point of running this.
+      - run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      # The build is its own failure mode -- a bundle can break on something
+      # `tsc --noEmit` is perfectly happy with.
+      - name: Build
+        run: npx vite build

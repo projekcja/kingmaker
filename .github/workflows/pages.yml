@@ -1,0 +1,62 @@
+# Publish the playable game to GitHub Pages.
+#
+# Separate from CI on purpose. CI is the gate every push and pull request goes
+# through; this only ever runs on main, and it re-runs the same checks before
+# publishing so a green branch cannot deploy a red commit.
+name: Pages
+
+on:
+  push:
+    branches: [main]
+  # A deploy that failed on something outside the code should be retryable
+  # without an empty commit.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and never cancel one half-way: an interrupted publish
+# leaves the site serving a mix of two builds.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The same gate as CI. Publishing is the one place where "it built" is
+      # not enough of a reason to ship it.
+      - run: npm run typecheck
+      - run: npm test
+
+      # A project page is served from /<repo>/, so every asset URL needs that
+      # prefix; without it the page loads and every script 404s.
+      - name: Build
+        run: npx vite build --base=/${{ github.event.repository.name }}/
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
