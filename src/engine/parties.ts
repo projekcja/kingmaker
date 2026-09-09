@@ -1251,10 +1251,18 @@ export const CHAMBERS: Chamber[] = [
 /**
  * The chamber a campaign opens on unless the setup screen says otherwise.
  *
- * The projection rather than the sitting Knesset: it is the board with no easy
- * majority anywhere on it, which is the game this game is about.
+ * September 2019: nine lists, the two largest a seat apart at 33 and 32, and
+ * nobody within 28 of a majority. It is the board with no easy majority
+ * anywhere on it, which is the game this game is about — and it is the one
+ * election in the file where the country played this exact game for three
+ * months and lost, which is a better invitation than a projection is.
+ *
+ * A real result rather than the projection, so what the game opens on is a
+ * matter of record. The projection is still on the setup screen, and still
+ * makes an excellent board; it is simply not the first thing a new player is
+ * asked to take on trust.
  */
-export const DEFAULT_CHAMBER = "polls";
+export const DEFAULT_CHAMBER = "knesset-22";
 
 export const chamberById = (id: string | undefined): Chamber =>
   CHAMBERS.find((chamber) => chamber.id === id) ??

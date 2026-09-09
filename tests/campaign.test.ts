@@ -81,11 +81,17 @@ describe("the chambers a campaign can open on", () => {
     expect(state.parties.rz).toBeUndefined();
   });
 
-  it("defaults to the projected next election when nothing is chosen", () => {
+  it("defaults to a real election, and to one nobody could form a government on", () => {
     const asked = newCampaign({ seed: 7, chamber: DEFAULT_CHAMBER });
     const unasked = newCampaign({ seed: 7 });
     expect(unasked.parties).toEqual(asked.parties);
-    expect(chamberById(DEFAULT_CHAMBER).projected).toBe(true);
+
+    // A matter of record rather than somebody's estimate, and a board where the
+    // game is genuinely open: the largest list is nowhere near 61.
+    const chamber = chamberById(DEFAULT_CHAMBER);
+    expect(chamber.projected).toBeUndefined();
+    expect(chamber.outcome?.formedBy).toBeNull();
+    expect(Math.max(...chamber.parties.map((party) => party.baseSeats))).toBeLessThan(MAJORITY - 20);
   });
 
   it("covers every election from the first to the sitting Knesset", () => {
@@ -289,7 +295,10 @@ describe("the term", () => {
   });
 
   it("carries coalition agreements across the end of a term", () => {
-    let state = sworn(4242);
+    // The seed has to be one where no card reopens the deal on the way through:
+    // a minister resigning takes the portfolio back, which is a different rule
+    // working, and would be read here as this one failing.
+    let state = sworn(4249);
     state.parties.shas.heldBy = "you";
     state.parties.shas.package = ["defense"];
 
@@ -359,7 +368,9 @@ describe("elections", () => {
   });
 
   it("keeps a list invented by a split, and keeps a merged one folded", () => {
-    const state = newCampaign({ seed: 55, humanParty: "likud", bots: [] });
+    // A seed where the invented list clears the threshold at the election. One
+    // that falls below it leaves the chamber, which is the sibling test.
+    const state = newCampaign({ seed: 56, humanParty: "likud", bots: [] });
     // A split card puts a party on the board that no profile knows about.
     state.parties["split-new-list"] = {
       key: "split-new-list",
@@ -372,17 +383,17 @@ describe("elections", () => {
       refusals: [],
     };
     state.parties.likud.seats -= 9;
-    // A merger card took Labor off the board entirely.
-    delete state.parties.labor;
+    // A merger card took Labor-Gesher off the board entirely.
+    delete state.parties["labor-gesher"];
 
-    runElection(state, new Rng(55));
+    runElection(state, new Rng(56));
 
     // The invented list is re-elected like any other, deal intact.
     expect(state.parties["split-new-list"]).toBeDefined();
     expect(state.parties["split-new-list"].heldBy).toBe("you");
     expect(state.parties["split-new-list"].package).toEqual(["defense"]);
     // And the merged one does not come back from the profile table.
-    expect(state.parties.labor).toBeUndefined();
+    expect(state.parties["labor-gesher"]).toBeUndefined();
     expect(seatTotal(state)).toBe(TOTAL_SEATS);
   });
 

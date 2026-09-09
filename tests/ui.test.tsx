@@ -47,8 +47,9 @@ describe("setup screen", () => {
   it("offers every real party to lead", () => {
     const html = renderToString(<Setup onStart={noop} />);
     expect(html).toContain("Kingmaker");
-    expect(html).toContain("Likud");
-    expect(html).toContain(escapeHtml("Ra'am"));
+    for (const profile of chamberById(DEFAULT_CHAMBER).parties) {
+      expect(html).toContain(escapeHtml(profile.name));
+    }
     expect(html).toContain("Start the campaign");
   });
 
@@ -61,19 +62,38 @@ describe("setup screen", () => {
     expect(html).toContain(">1949<");
     expect(html).toContain(">2022<");
 
-    // The default board is the projection, and the screen says in words that it
-    // is one -- a class name the player cannot see would not be enough.
+    // The board it opens on is a real election, named, with what the country
+    // actually did with it printed underneath -- which on this one is nothing.
     const chamber = chamberById(DEFAULT_CHAMBER);
-    expect(chamber.projected).toBe(true);
+    expect(chamber.projected).toBeUndefined();
     expect(html).toContain(escapeHtml(chamber.name));
-    expect(html).toContain("not a result");
-    expect(html).toContain("polling averages");
+    expect(html).toContain("Nobody formed a government");
 
     // Its lists are the ones offered to lead, and a party from another Knesset
     // is not on the board at all.
     for (const profile of chamber.parties) expect(html).toContain(escapeHtml(profile.name));
     expect(html).not.toContain("Mapai");
     expect(html).not.toContain("Kulanu");
+  });
+
+  it("never sells the projection as a result", () => {
+    // The projection is no longer the opening board, so the screen has to be
+    // asked for it. It is the one board in the file that is somebody's estimate
+    // and the only one that can mislead, so the caveat is asserted in the words
+    // a player reads rather than in a class name they cannot see.
+    const projection = CHAMBERS.find((chamber) => chamber.projected)!;
+    const html = renderToString(<Setup chamber={projection.id} onStart={noop} />);
+
+    expect(html).toContain(escapeHtml(projection.name));
+    expect(html).toContain("not a result");
+    expect(html).toContain("not a live feed");
+    expect(html).toContain("polling averages");
+    // An apostrophe in a list name survives the round trip to HTML.
+    expect(html).toContain(escapeHtml("Ra'am"));
+
+    // And it is never given an outcome, because it has not happened.
+    expect(projection.outcome).toBeUndefined();
+    expect(html).not.toContain("formed the government");
   });
 });
 

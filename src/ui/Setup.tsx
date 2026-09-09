@@ -15,6 +15,8 @@ interface Props {
     seed?: number;
     chamber?: string;
   }) => void;
+  /** Which board the screen opens on. The default is the one a campaign gets. */
+  chamber?: string;
 }
 
 const BOT_SETS: Array<{ label: string; bots: PlayerKind[]; note: string }> = [
@@ -28,8 +30,8 @@ const BOT_SETS: Array<{ label: string; bots: PlayerKind[]; note: string }> = [
   },
 ];
 
-export const Setup = ({ onStart }: Props) => {
-  const [chamberId, setChamberId] = useState(DEFAULT_CHAMBER);
+export const Setup = ({ onStart, chamber: opening = DEFAULT_CHAMBER }: Props) => {
+  const [chamberId, setChamberId] = useState(opening);
   const chamber = chamberById(chamberId);
   const ranked = [...chamber.parties].sort((a, b) => b.baseSeats - a.baseSeats);
 
@@ -102,18 +104,20 @@ export const Setup = ({ onStart }: Props) => {
               className="outcome-dot"
               style={{ background: formed ? BLOC_COLOUR[formed.bloc] : undefined }}
             />
-            {formed && chamber.outcome.premier ? (
-              <>
-                <strong>
-                  {chamber.outcome.premier} ({formed.name}, {formed.baseSeats})
-                </strong>{" "}
-                formed the government. {chamber.outcome.note}
-              </>
-            ) : (
-              <>
-                <strong>Nobody formed a government.</strong> {chamber.outcome.note}
-              </>
-            )}
+            <span className="outcome-text">
+              {formed && chamber.outcome.premier ? (
+                <>
+                  <strong>
+                    {chamber.outcome.premier} ({formed.name}, {formed.baseSeats})
+                  </strong>{" "}
+                  formed the government. {chamber.outcome.note}
+                </>
+              ) : (
+                <>
+                  <strong>Nobody formed a government.</strong> {chamber.outcome.note}
+                </>
+              )}
+            </span>
           </p>
         )}
       </div>

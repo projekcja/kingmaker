@@ -27,11 +27,13 @@ npm run playtest   # sit language models at the table (needs OPENROUTER_API_KEY)
 ## The game
 
 ### The board
-By default the **projected next election** — a hand-entered snapshot of published polling
-averages, and the one board in the game where no bloc is anywhere near 61: Likud 27, Bennett 2026
-25, Democrats 12, Yisrael Beiteinu 12, Otzma Yehudit 9, Shas 9, Yesh Atid 9, UTJ 7, Hadash-Ta'al 5,
-Ra'am 5. You pick which one to lead; rivals take the largest you left. Your own party's mandates
-always count toward your bloc.
+By default the **22nd Knesset**, elected September 2019: Blue and White 33, Likud 32, Joint List
+13, Shas 9, Yisrael Beiteinu 8, Yamina 7, UTJ 7, Labor-Gesher 6, Democratic Union 5. Nine lists,
+the two largest a seat apart, and nobody within 28 of a majority. It is the default because it is
+the one election in the file where the country played this exact game for three months and lost —
+neither Netanyahu nor Gantz could reach 61, the Knesset dissolved itself, and everyone voted again.
+You pick which list to lead; rivals take the largest you left. Your own party's mandates always
+count toward your bloc.
 
 **Or open on any Knesset ever elected.** All twenty-five real elections are on the setup screen,
 from the first in January 1949 to the twenty-fifth in November 2022, each with the lists that
@@ -59,6 +61,7 @@ skill-rewarding, and the reason is the shape of the board rather than the era:
 | 21st (2019) | 91% | 35 apiece — who draws which starts to matter |
 | 13th (1992) | 87% | |
 | 12th (1988) | 78% | |
+| **22nd (2019)** — the default | 71.5% | 33–32, and seven mid-sized lists holding the balance |
 | 11th (1984) | 70% | 44–41, and the rest is small change |
 | 8th (1973) | 70% | Alignment 51 |
 | 10th (1981) | 68% | 48–47, only 25 mandates on the market at all |
@@ -69,10 +72,14 @@ start near 61 is decided mostly by who draws them; a board of ten or fifteen mid
 decided by how you spend. That is the game working as intended, and it makes the older Knessets a
 genuinely different exercise rather than a reskin.
 
-The projection is the one board that is somebody's estimate rather than a matter of record. It is
-frozen, not a live feed, and not a forecast; the setup screen says so in those words. It is the
-default because it makes the best board, not because it predicts anything. Edit it — and any of
-the rest — in `src/engine/parties.ts`.
+There is also a **projected next election** on the setup screen — a hand-entered snapshot of
+published polling averages, and the one board in the game where no bloc is anywhere near 61: Likud
+27, Bennett 2026 25, Democrats 12, Yisrael Beiteinu 12, Otzma Yehudit 9, Shas 9, Yesh Atid 9, UTJ
+7, Hadash-Ta'al 5, Ra'am 5. It makes an excellent board. It is the one board that is somebody's
+estimate rather than a matter of record, though — frozen, not a live feed, and not a forecast; the
+setup screen says so in those words, and a test asserts it does. That is why it is no longer what
+the game opens on: what a new player is handed first should be a matter of record. Edit it — and
+any of the rest — in `src/engine/parties.ts`.
 
 **Two players by default** — you and one rival. A party somebody leads is never for sale, so each
 extra rival takes seats off the market faster than it adds a contender: with two players there are
@@ -240,11 +247,14 @@ greedy bot's move goes to the engine directly or through a round trip of model-s
 `scripts/balance.ts` plays every seed twice with the strategies swapped between the same two seats,
 because the parties are wildly unequal and a naive comparison would mostly measure who drew Likud.
 
-Currently: **greedy beats random 69%**, every campaign reaches a winner, a campaign runs a median of
-19 turns across about four parliaments, and forming a coalition takes a median of 2 weeks — well
-inside the six-week limit, with head-to-head negotiations running to 19. Governments last a mean of
-2.43 years, inside the four-year term, so the term is a ceiling on the safe ones rather than the
-usual way one ends.
+Currently, on the 22nd Knesset it opens on: **greedy beats random 71.5%** over 480 campaigns, every
+one of them reaching a winner, a campaign running a median of 18 turns across a mean of 4.25
+parliaments. Forming a coalition takes a median of 2 weeks — well inside the six-week limit, with
+head-to-head negotiations running to 19. Governments last a mean of 2.55 years, inside the four-year
+term, so the term is a ceiling on the safe ones rather than the usual way one ends.
+
+The probe reads `DEFAULT_CHAMBER`, so it measures whichever board the game opens on; the table above
+is that same probe run once per chamber.
 
 Three findings from that probe are baked into the rules and the bot:
 

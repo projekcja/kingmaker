@@ -219,10 +219,14 @@ describe("resolution", () => {
   });
 
   it("gives an open party to whoever is closest to governing on a tie", () => {
-    const state = setup();
+    // The tie goes to the bigger bloc, so the seat that is meant to win has to
+    // be the bigger one. Read the largest list off the board rather than naming
+    // it: which party that is changes with the chamber the game opens on.
+    const largest = [...PARTY_PROFILES].sort((a, b) => b.baseSeats - a.baseSeats)[0];
+    const state = newCampaign({ seed: 11, humanParty: largest.key, bots: ["greedy", "random"] });
     const target = biddableParties(state)[0];
 
-    // Likud (32) against Yesh Atid (24), identical money, nobody holding it.
+    // Identical money on an unheld party, and one bidder already nearer to 61.
     state.offers = {
       you: offer([[target.key, ["defense"]]]),
       bot1: offer([[target.key, ["defense"]]]),
