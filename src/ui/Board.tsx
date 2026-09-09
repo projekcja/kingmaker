@@ -238,6 +238,10 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
   const span = forming ? FORMING_DEADLINE : TERM_LENGTH;
   const spent = forming ? state.week : state.governmentYears + 1;
   const label = forming ? "weeks to form a government" : "years of this Knesset";
+  // Only the forming clock is a fuse — the Knesset dissolving on week six is a
+  // real loss condition, and a term running out is not. Two weeks or fewer is
+  // when a stalled negotiation is genuinely close to dissolution.
+  const fuseUrgent = forming && span - spent <= 2;
 
   return (
     <div
@@ -259,7 +263,7 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
           <Emblem className="hud-emblem" />
           <div className="phase-tag">{tag}</div>
           <div className="phase">{headline}</div>
-          <div className="clock">
+          <div className="clock" data-urgent={fuseUrgent ? "true" : undefined}>
             <span className="pips" title={`${clock} · ${label}`}>
               {Array.from({ length: span }, (_, index) => (
                 <span
