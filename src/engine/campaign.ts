@@ -24,7 +24,16 @@ import {
   chamberById,
 } from "./parties";
 import { Rng } from "./rng";
-import type { GameState, Offer, Party, Player, PlayerKind, TurnResult } from "./types";
+import type {
+  BallotChange,
+  ElectionCause,
+  GameState,
+  Offer,
+  Party,
+  Player,
+  PlayerKind,
+  TurnResult,
+} from "./types";
 import {
   FORMING_DEADLINE,
   TERM_LENGTH,
@@ -145,6 +154,7 @@ export const newCampaign = (options: CampaignOptions = {}): GameState => {
     offers: {},
     log: [],
     lastTurn: null,
+    lastElection: null,
     rngState: rng.state,
     seed,
     winner: null,
@@ -398,8 +408,6 @@ const checkWin = (state: GameState): void => {
  * below the threshold takes its seat out of the chamber, and the portfolios it
  * was holding go back to the player who paid them.
  */
-export type ElectionCause = "collapse" | "term";
-
 export const runElection = (
   state: GameState,
   rng: Rng,
@@ -413,9 +421,13 @@ export const runElection = (
       : "The government falls.";
   log(state, "election", opening);
 
+  // The chamber as it sat, so a list the ballot invents can be told apart from
+  // one that has been there all along.
+  const sat = new Set(Object.keys(state.parties));
+
   // The ballot is settled before the country votes: lists merge, split and wind
   // up during the campaign, and only then are the votes counted.
-  realign(state, rng);
+  const ballot = realign(state, rng);
 
   const before = state.parties;
   const seats = rollSeats(rng, protectedKeys, standingSeats(before));
@@ -443,6 +455,28 @@ export const runElection = (
   state.week = 0;
   state.parliament += 1;
 
+  // The swing is the vote and nothing else: measured against what each list
+  // actually stood on, which for a joint ticket is both partners added up and
+  // for a breakaway is the mandates it walked out with. Folding the ballot
+  // changes into these numbers would report a merger as a landslide.
+  state.lastElection = {
+    turn: state.turn,
+    parliament: state.parliament,
+    cause,
+    ballot,
+    standings: Object.values(before)
+      .map((party) => ({
+        partyKey: party.key,
+        name: party.name,
+        bloc: party.bloc,
+        before: party.seats,
+        after: seats[party.key] ?? 0,
+        heldBy: party.heldBy,
+        fresh: !sat.has(party.key),
+      }))
+      .sort((a, b) => b.after - a.after || b.before - a.before),
+  };
+
   log(
     state,
     "election",
@@ -462,7 +496,7 @@ export const runElection = (
  * that folds takes its old vote share into whoever absorbed it; a breakaway
  * starts the next election with the mandates it walked out with.
  */
-type Realignment = (state: GameState, rng: Rng) => string | null;
+type Realignment = (state: GameState, rng: Rng) => { note: string; change: BallotChange } | null;
 
 /** The lists the ballot can rearrange: everything nobody is leading. */
 const looseParties = (state: GameState): Party[] =>
@@ -530,7 +564,20 @@ const jointTicket: Realignment = (state, rng) => {
   const cost = lost
     ? ` ${playerOf(state, lost).name} loses ${theList(small.name)} and the portfolios that were holding it.`
     : "";
-  return `${TheList(big.name)} and ${theList(small.name)} announce a joint run as ${theList(name)}, ${total} mandates on one ticket.${cost}`;
+  return {
+    note: `${TheList(big.name)} and ${theList(small.name)} announce a joint run as ${theList(name)}, ${total} mandates on one ticket.${cost}`,
+    change: {
+      kind: "union",
+      key,
+      name,
+      seats: total,
+      parts: [
+        { key: big.key, name: big.name, seats: big.seats },
+        { key: small.key, name: small.name, seats: small.seats },
+      ],
+      costTo: lost,
+    },
+  };
 };
 
 /**
@@ -566,7 +613,18 @@ const breakaway: Realignment = (state, rng) => {
     package: [],
     refusals: [],
   };
-  return `${taken} of ${theList(parent.name)} walk out over the leadership and register as ${theList(name)}. ${TheList(parent.name)} goes into the election on ${parent.seats}.`;
+  return {
+    note: `${taken} of ${theList(parent.name)} walk out over the leadership and register as ${theList(name)}. ${TheList(parent.name)} goes into the election on ${parent.seats}.`,
+    change: {
+      kind: "breakaway",
+      key,
+      name,
+      seats: taken,
+      parentKey: parent.key,
+      parentName: parent.name,
+      parentSeats: parent.seats,
+    },
+  };
 };
 
 /**
@@ -593,7 +651,18 @@ const windUp: Realignment = (state, rng) => {
   const cost = buyer
     ? ` ${playerOf(state, buyer).name} paid for a list that no longer exists, and the portfolios come home.`
     : "";
-  return `${TheList(folding.name)} winds itself up rather than face the voters. Its ${folding.seats} mandates go to ${theList(heir.name)}.${cost}`;
+  return {
+    note: `${TheList(folding.name)} winds itself up rather than face the voters. Its ${folding.seats} mandates go to ${theList(heir.name)}.${cost}`,
+    change: {
+      kind: "wound-up",
+      key: folding.key,
+      name: folding.name,
+      seats: folding.seats,
+      heirKey: heir.key,
+      heirName: heir.name,
+      costTo: buyer,
+    },
+  };
 };
 
 /**
@@ -608,21 +677,24 @@ const windUp: Realignment = (state, rng) => {
  * party to lead, and a leader whose own list folds under them has had the game
  * taken away rather than made harder.
  */
-const realign = (state: GameState, rng: Rng): void => {
+const realign = (state: GameState, rng: Rng): BallotChange[] => {
   const moves: Realignment[] = [jointTicket, breakaway, windUp];
   // Most elections rearrange the ballot once, some twice, and a quiet one not
   // at all. More than that and a campaign stops being about the same country.
   const count = rng.chance(0.25) ? 0 : rng.chance(0.72) ? 1 : 2;
 
+  const changes: BallotChange[] = [];
   for (let event = 0; event < count; event += 1) {
     for (const move of rng.sample(moves, moves.length)) {
-      const note = move(state, rng);
-      if (note) {
-        log(state, "election", note);
+      const happened = move(state, rng);
+      if (happened) {
+        log(state, "election", happened.note);
+        changes.push(happened.change);
         break;
       }
     }
   }
+  return changes;
 };
 
 /** What a chamber is holding now, as the baseline for the next election. */

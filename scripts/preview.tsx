@@ -12,6 +12,7 @@ import { applyAction, newCampaign } from "../src/engine/campaign";
 import { Rng } from "../src/engine/rng";
 import type { GameState } from "../src/engine/types";
 import { Board } from "../src/ui/Board";
+import { ElectionReport } from "../src/ui/ElectionReport";
 import { Reveal } from "../src/ui/Reveal";
 import { Setup } from "../src/ui/Setup";
 
@@ -38,6 +39,10 @@ let governing = forming;
 for (let turn = 0; turn < 60 && governing.phase === "forming"; turn += 1) {
   governing = play(governing, 1);
 }
+
+// Election night needs an election, and the only way to one is to play to it.
+let voted = forming;
+for (let turn = 0; turn < 400 && !voted.lastElection; turn += 1) voted = play(voted, 1);
 
 const css = readFileSync("src/styles.css", "utf8");
 const panel = (title: string, body: string) =>
@@ -70,6 +75,18 @@ ${panel("forming", renderToString(<Board state={forming} onCommit={noop} />))}
 ${panel(
   `${governing.phase} — ${governing.primeMinister === "you" ? "government" : "opposition"}`,
   renderToString(<Board state={governing} onCommit={noop} />),
+)}
+${panel(
+  "election night",
+  voted.lastElection
+    ? renderToString(
+        <ElectionReport state={voted} result={voted.lastElection} onClose={noop} />,
+      )
+    : "<p>no election inside the turn cap</p>",
+)}
+${panel(
+  "the board, the turn an election lands",
+  voted.lastElection ? renderToString(<Board state={voted} onCommit={noop} />) : "<p>none</p>",
 )}
 ${panel(
   "reveal",

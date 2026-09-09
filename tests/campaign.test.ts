@@ -694,3 +694,106 @@ describe("two people at one keyboard", () => {
     expect(pendingSeat(step.state)?.key).toBe("bot1");
   });
 });
+
+describe("what an election reports back", () => {
+  /** Play a fresh campaign until the country votes, and hand back the result. */
+  const firstVote = (seed: number): GameState => {
+    let state = newCampaign({ seed, humanParty: "likud", bots: ["greedy"] });
+    for (let turn = 0; turn < 400 && !state.lastElection; turn += 1) {
+      state = applyAction(state, {
+        type: "offer",
+        playerKey: "you",
+        offer: greedyOffer(state, "you", new Rng(seed + turn)),
+      }).state;
+    }
+    return state;
+  };
+
+  it("records every list that stood, and what the country did to it", () => {
+    for (let seed = 1; seed <= 12; seed += 1) {
+      const state = firstVote(seed);
+      const vote = state.lastElection;
+      expect(vote).not.toBeNull();
+      if (!vote) continue;
+
+      // The standings are the ballot paper, and the chamber they produced.
+      const seated = Object.values(state.parties);
+      expect(vote.standings.length).toBeGreaterThanOrEqual(seated.length);
+      expect(vote.standings.reduce((sum, entry) => sum + entry.after, 0)).toBe(TOTAL_SEATS);
+
+      for (const standing of vote.standings) {
+        const seat = state.parties[standing.partyKey];
+        // A list that sat is reported at the seats it actually holds; one that
+        // did not is reported at zero rather than left out, because "out of the
+        // chamber" is the single most important thing an election can say.
+        expect(standing.after).toBe(seat?.seats ?? 0);
+        expect(standing.before).toBeGreaterThan(0);
+      }
+
+      // Every list in the new chamber stood in the election that produced it.
+      const stood = new Set(vote.standings.map((standing) => standing.partyKey));
+      for (const party of seated) expect(stood.has(party.key)).toBe(true);
+
+      expect(vote.parliament).toBe(state.parliament);
+    }
+  });
+
+  it("measures the swing against what each list stood on, not what it used to be", () => {
+    // A joint ticket is the case that separates the two. The merged list stood
+    // on both partners added together, so reporting it against either one alone
+    // would call an ordinary night a landslide.
+    let found = 0;
+    for (let seed = 1; seed <= 40 && found < 3; seed += 1) {
+      const vote = firstVote(seed).lastElection;
+      if (!vote) continue;
+      for (const change of vote.ballot) {
+        if (change.kind !== "union") continue;
+        found += 1;
+        const standing = vote.standings.find((entry) => entry.partyKey === change.key);
+        expect(standing).toBeDefined();
+        expect(change.seats).toBe(change.parts[0].seats + change.parts[1].seats);
+        expect(standing!.before).toBe(change.seats);
+        // And it is a list that did not exist in the chamber that just sat.
+        expect(standing!.fresh).toBe(true);
+        // Both partners are off the ballot: they ran as one.
+        for (const part of change.parts) {
+          expect(vote.standings.some((entry) => entry.partyKey === part.key)).toBe(false);
+        }
+      }
+    }
+    expect(found).toBeGreaterThan(0);
+  });
+
+  it("reports a rearranged ballot as facts as well as prose", () => {
+    let seen = 0;
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const state = firstVote(seed);
+      const vote = state.lastElection;
+      if (!vote || vote.ballot.length === 0) continue;
+      seen += 1;
+
+      // One log line per change, so the panel and the log cannot disagree about
+      // how many things happened on the ballot paper.
+      const lines = state.log.filter(
+        (entry) => entry.turn === vote.turn && entry.kind === "election",
+      );
+      expect(lines.length).toBe(vote.ballot.length + 2);
+
+      for (const change of vote.ballot) {
+        expect(change.seats).toBeGreaterThan(0);
+        if (change.kind === "breakaway") {
+          // A breakaway is the one that puts unbought mandates on the market.
+          const standing = vote.standings.find((entry) => entry.partyKey === change.key);
+          expect(standing?.fresh).toBe(true);
+          expect(standing?.heldBy ?? null).toBeNull();
+        }
+        if (change.kind === "wound-up") {
+          // The list that folded is not on the ballot; its heir is.
+          expect(vote.standings.some((entry) => entry.partyKey === change.key)).toBe(false);
+          expect(vote.standings.some((entry) => entry.partyKey === change.heirKey)).toBe(true);
+        }
+      }
+    }
+    expect(seen).toBeGreaterThan(0);
+  });
+});

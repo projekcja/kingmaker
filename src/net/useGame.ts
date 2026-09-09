@@ -29,11 +29,23 @@ export const useGame = (id: string | null): Game => {
   const [actions, setActions] = useState<Action[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /**
+   * Which campaign the loaded record actually belongs to.
+   *
+   * `loading` is raised in an effect, and effects run after the render that
+   * changed the id — so for exactly one render after switching campaigns this
+   * hook was still holding the previous campaign's record and replaying it.
+   * The caller drew the old board, and the old reveal on top of it. Comparing
+   * what is loaded against what was asked for is checked during the render
+   * rather than after it, so there is no frame in which the answer is wrong.
+   */
+  const [loadedId, setLoadedId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!id) {
       setRecord(null);
       setActions([]);
+      setLoadedId(null);
       setLoading(false);
       return;
     }
@@ -43,6 +55,7 @@ export const useGame = (id: string | null): Game => {
     ]);
     setRecord(nextRecord);
     setActions(nextActions);
+    setLoadedId(id);
     setLoading(false);
   }, [id]);
 
@@ -53,8 +66,10 @@ export const useGame = (id: string | null): Game => {
     return transport.subscribe(id, () => void reload());
   }, [id, reload]);
 
+  const stale = loadedId !== id;
+
   const replayed = useMemo(() => {
-    if (!record) return { state: null, replayError: null as string | null };
+    if (!record || stale) return { state: null, replayError: null as string | null };
     try {
       return { state: replay(record, actions), replayError: null };
     } catch (caught) {
@@ -64,7 +79,7 @@ export const useGame = (id: string | null): Game => {
           : "This saved campaign could not be replayed.";
       return { state: null, replayError: message };
     }
-  }, [record, actions]);
+  }, [record, actions, stale]);
 
   const commit = useCallback(
     async (offer: Offer) => {
@@ -94,11 +109,11 @@ export const useGame = (id: string | null): Game => {
   );
 
   return {
-    record,
-    actions,
+    record: stale ? null : record,
+    actions: stale ? [] : actions,
     state: replayed.state,
     error: error ?? replayed.replayError,
-    loading,
+    loading: loading || stale,
     commit,
     reload,
   };

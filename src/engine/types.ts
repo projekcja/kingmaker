@@ -171,6 +171,88 @@ export interface Withdrawal {
   ministries: string[];
 }
 
+/** Why the country is voting. */
+export type ElectionCause =
+  /** A government fell, or nobody could form one inside the deadline. */
+  | "collapse"
+  /** The Knesset sat its full term. */
+  | "term";
+
+/**
+ * One rearrangement of the ballot paper, as a fact rather than as a sentence.
+ *
+ * The log already carries the prose. This is the same event in a shape the
+ * interface can lay out — which lists were involved, how many mandates moved,
+ * and whose deal it cost — because "Shas and UTJ announce a joint run" is a
+ * headline and the player also wants to see the arithmetic under it.
+ */
+export type BallotChange =
+  /** Two lists of the same politics run on one ticket. */
+  | {
+      kind: "union";
+      key: string;
+      name: string;
+      seats: number;
+      /** The two lists that went in, with what each brought. */
+      parts: Array<{ key: string; name: string; seats: number }>;
+      /** The player who lost the smaller partner, if anybody had bought it. */
+      costTo: string | null;
+    }
+  /** A faction walks out of a big list and registers on its own. */
+  | {
+      kind: "breakaway";
+      key: string;
+      name: string;
+      seats: number;
+      parentKey: string;
+      parentName: string;
+      /** What the parent goes into the election on, after the walkout. */
+      parentSeats: number;
+    }
+  /** A small list gives up, and its mandates go to the nearest one politically. */
+  | {
+      kind: "wound-up";
+      key: string;
+      name: string;
+      seats: number;
+      heirKey: string;
+      heirName: string;
+      costTo: string | null;
+    };
+
+/** One list's night: what it stood on, and what the country gave it. */
+export interface Standing {
+  partyKey: string;
+  name: string;
+  bloc: Bloc;
+  /** Mandates it went into the election holding, after the ballot rearranged. */
+  before: number;
+  /** Mandates it came out with. Zero means it is out of the chamber. */
+  after: number;
+  heldBy: string | null;
+  /** True when the ballot invented this list for this election. */
+  fresh: boolean;
+}
+
+/**
+ * An election, in the shape the interface reads it back in.
+ *
+ * Two separate stories, and conflating them would misreport both. The ballot
+ * rearranges first -- lists merge, split and fold -- and only then does the
+ * country vote on whatever ended up on the paper. So a swing here is the vote
+ * alone, measured against what each list actually stood on, and the ballot
+ * changes are reported as their own thing rather than folded into the numbers.
+ */
+export interface ElectionResult {
+  turn: number;
+  /** The parliament this vote elected. */
+  parliament: number;
+  cause: ElectionCause;
+  ballot: BallotChange[];
+  /** Every list that stood, best result first. */
+  standings: Standing[];
+}
+
 export interface TurnResult {
   turn: number;
   parties: PartyResult[];
@@ -208,6 +290,14 @@ export interface GameState {
   log: LogEntry[];
   /** The most recent resolution, kept so the interface can show the reveal. */
   lastTurn: TurnResult | null;
+  /**
+   * The most recent election, or null if the country has not voted yet.
+   *
+   * Kept beside {@link lastTurn} rather than inside it: an election is the
+   * turn's consequence, not one of its bids, and it stays readable in the side
+   * panel for the whole of the parliament it elected.
+   */
+  lastElection: ElectionResult | null;
 
   rngState: number;
   seed: number;

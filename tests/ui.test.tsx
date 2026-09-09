@@ -15,6 +15,8 @@ import {
 } from "../src/engine/parties";
 import { Board } from "../src/ui/Board";
 import { Chamber } from "../src/ui/Chamber";
+import { ElectionReport } from "../src/ui/ElectionReport";
+import { currentElection, currentReveal } from "../src/ui/reports";
 import { Reveal } from "../src/ui/Reveal";
 import { BlocChamber } from "../src/ui/BlocChamber";
 import { Setup } from "../src/ui/Setup";
@@ -395,5 +397,214 @@ describe("a shared screen", () => {
   it("says nothing about seats in a solo campaign", () => {
     const state = newCampaign({ seed: 201, humanParty: "likud" });
     expect(renderToString(<Board state={state} onCommit={noop} />)).not.toContain("your seat");
+  });
+});
+
+describe("the side panel", () => {
+  /** A campaign one resolved turn in, so there is something to report. */
+  const afterATurn = (seed: number): GameState => {
+    const state = newCampaign({ seed, humanParty: "likud", bots: ["greedy"] });
+    return applyAction(state, {
+      type: "offer",
+      playerKey: "you",
+      offer: greedyOffer(state, "you", new Rng(seed)),
+    }).state;
+  };
+
+  it("says nothing has happened before anything has", () => {
+    const html = renderToString(<Board state={newCampaign({ seed: 401 })} onCommit={noop} />);
+    expect(html).toContain("dispatch");
+    expect(html).toContain("Nothing has happened yet");
+  });
+
+  it("keeps the last turn on screen while the next one is being decided", () => {
+    const state = afterATurn(402);
+    const html = renderToString(<Board state={state} onCommit={noop} />);
+    const moved = state.lastTurn!.parties.filter(
+      (party) => party.newHolder !== party.previousHolder,
+    );
+
+    // The reveal is a modal and is gone once it is closed. The panel is what
+    // the next offer is actually placed against, so the same turn is there too.
+    expect(html).toContain("The week just gone");
+    for (const party of moved) {
+      expect(html).toContain(escapeHtml(state.parties[party.partyKey]?.name ?? ""));
+    }
+    expect(html).toContain("The full reveal");
+  });
+
+  it("reports the vote instead of the bidding on the turn the country votes", () => {
+    let state = newCampaign({ seed: 403, humanParty: "likud", bots: ["greedy"] });
+    for (let turn = 0; turn < 400 && !state.lastElection; turn += 1) {
+      state = applyAction(state, {
+        type: "offer",
+        playerKey: "you",
+        offer: greedyOffer(state, "you", new Rng(403 + turn)),
+      }).state;
+    }
+    const vote = state.lastElection!;
+    expect(vote.turn).toBe(state.lastTurn!.turn);
+
+    const html = renderToString(<Board state={state} onCommit={noop} />);
+    // An election outranks a turn: the chamber under the whole board has been
+    // redrawn, which matters more than who bid what for the Shas.
+    expect(html).toContain("The country voted");
+    expect(html).not.toContain("The week just gone");
+    expect(html).toContain("The biggest moves");
+    expect(html).toContain("The full result");
+
+    // The biggest swing is named, with its sign spelled out rather than left to
+    // the colour -- the good/bad pair is not far enough apart under deuteranopia
+    // to carry it alone.
+    const biggest = [...vote.standings].sort(
+      (a, b) => Math.abs(b.after - b.before) - Math.abs(a.after - a.before),
+    )[0];
+    const swing = biggest.after - biggest.before;
+    expect(html).toContain(escapeHtml(biggest.name));
+    if (swing !== 0) expect(html).toContain(swing > 0 ? `+${swing}` : `−${Math.abs(swing)}`);
+  });
+});
+
+describe("election night", () => {
+  const voted = (seed: number): GameState => {
+    let state = newCampaign({ seed, humanParty: "likud", bots: ["greedy"] });
+    for (let turn = 0; turn < 400 && !state.lastElection; turn += 1) {
+      state = applyAction(state, {
+        type: "offer",
+        playerKey: "you",
+        offer: greedyOffer(state, "you", new Rng(seed + turn)),
+      }).state;
+    }
+    return state;
+  };
+
+  it("names every list that stood, what it stood on, and what it won", () => {
+    const state = voted(404);
+    const vote = state.lastElection!;
+    const html = renderToString(
+      <ElectionReport state={state} result={vote} onClose={noop} />,
+    );
+
+    expect(html).toContain("The country has voted");
+    for (const standing of vote.standings) {
+      expect(html).toContain(escapeHtml(standing.name));
+      // Both numbers on the row, because a swing without the base it swung
+      // from is a number the player cannot check.
+      const swing = standing.after - standing.before;
+      expect(html).toContain(`>${standing.before}<`);
+      expect(html).toContain(
+        swing > 0 ? `+${swing}` : swing < 0 ? `−${Math.abs(swing)}` : "—",
+      );
+    }
+  });
+
+  it("marks a list voted out of the chamber rather than dropping it", () => {
+    // A list under the threshold is gone for good, which is the harshest thing
+    // an election does and the easiest to miss if it simply stops being drawn.
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const state = voted(seed);
+      const vote = state.lastElection;
+      const out = vote?.standings.filter((standing) => standing.after === 0) ?? [];
+      if (out.length === 0) continue;
+
+      const html = renderToString(
+        <ElectionReport state={state} result={vote!} onClose={noop} />,
+      );
+      expect(html).toContain("will not sit in it");
+      for (const standing of out) expect(html).toContain(escapeHtml(standing.name));
+      expect(html).toContain("swing out");
+      return;
+    }
+    throw new Error("no seed in 1..40 put a list under the threshold");
+  });
+
+  it("keeps the ballot changing apart from the country voting", () => {
+    for (let seed = 1; seed <= 40; seed += 1) {
+      const state = voted(seed);
+      const vote = state.lastElection;
+      if (!vote || vote.ballot.length === 0) continue;
+
+      const html = renderToString(
+        <ElectionReport state={state} result={vote!} onClose={noop} />,
+      );
+      // Two separate stories. Merged into one set of numbers, a joint ticket
+      // reads as a landslide and a breakaway as a collapse.
+      expect(html).toContain("The ballot changed before anybody voted");
+      expect(html).toContain("How they did");
+      for (const change of vote.ballot) {
+        expect(html).toContain(escapeHtml(change.name));
+        if (change.kind === "union") {
+          for (const part of change.parts) expect(html).toContain(escapeHtml(part.name));
+        }
+        if (change.kind === "wound-up") expect(html).toContain(escapeHtml(change.heirName));
+        if (change.kind === "breakaway") expect(html).toContain(escapeHtml(change.parentName));
+      }
+      return;
+    }
+    throw new Error("no seed in 1..40 rearranged the ballot");
+  });
+});
+
+describe("a report held across campaigns", () => {
+  const played = (seed: number, turns: number): GameState => {
+    let state = newCampaign({ seed, humanParty: "likud", bots: ["greedy"] });
+    for (let turn = 0; turn < turns; turn += 1) {
+      state = applyAction(state, {
+        type: "offer",
+        playerKey: "you",
+        offer: greedyOffer(state, "you", new Rng(seed + turn)),
+      }).state;
+    }
+    return state;
+  };
+
+  it("does not follow the player into the next campaign", () => {
+    // The reported bug: finish a campaign, start another, play a turn, and the
+    // reveal from the campaign before it opened over the new board. React state
+    // outlives a campaign, so the held report has to be checked rather than
+    // trusted.
+    const finished = played(501, 6);
+    const held = finished.lastTurn;
+    expect(held).not.toBeNull();
+
+    const fresh = newCampaign({ seed: 502, humanParty: "likud", bots: ["greedy"] });
+    expect(fresh.lastTurn).toBeNull();
+    expect(currentReveal(fresh, held)).toBeNull();
+
+    // And it is still refused once the new campaign has turns of its own, even
+    // where the turn numbers line up exactly.
+    const oneTurnIn = played(502, 1);
+    const sameTurn = played(501, 1).lastTurn!;
+    expect(oneTurnIn.lastTurn!.turn).toBe(sameTurn.turn);
+    expect(currentReveal(oneTurnIn, sameTurn)).toBe(sameTurn);
+    expect(currentReveal(oneTurnIn, held)).toBeNull();
+  });
+
+  it("keeps a report that is still the campaign's most recent", () => {
+    const state = played(503, 3);
+    expect(currentReveal(state, state.lastTurn)).toBe(state.lastTurn);
+    expect(currentReveal(state, null)).toBeNull();
+  });
+
+  it("refuses an election from a campaign that is not this one", () => {
+    let voted = newCampaign({ seed: 504, humanParty: "likud", bots: ["greedy"] });
+    for (let turn = 0; turn < 400 && !voted.lastElection; turn += 1) {
+      voted = applyAction(voted, {
+        type: "offer",
+        playerKey: "you",
+        offer: greedyOffer(voted, "you", new Rng(504 + turn)),
+      }).state;
+    }
+    const vote = voted.lastElection!;
+    expect(currentElection(voted, vote)).toBe(vote);
+
+    // A campaign that has not voted yet has nothing to match it against.
+    const fresh = newCampaign({ seed: 505, humanParty: "likud", bots: ["greedy"] });
+    expect(currentElection(fresh, vote)).toBeNull();
+
+    // Nor does one that voted on the same turn of a different parliament.
+    expect(
+      currentElection({ ...voted, lastElection: { ...vote, parliament: vote.parliament + 1 } }, vote),
+    ).toBeNull();
   });
 });

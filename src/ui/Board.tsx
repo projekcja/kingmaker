@@ -17,6 +17,7 @@ import {
   valueOf,
 } from "../engine/types";
 import { Chamber } from "./Chamber";
+import { Dispatch } from "./Dispatch";
 import { Emblem } from "./Emblem";
 import { BLOC_COLOUR, playerColour, playerName } from "./format";
 
@@ -26,6 +27,8 @@ interface Props {
   busy?: boolean;
   /** Which seat is looking. Defaults to the first human, for a solo campaign. */
   seat?: string;
+  /** Reopen a report the side panel is summarising. */
+  onOpenReport?: (kind: "turn" | "election") => void;
 }
 
 /**
@@ -36,7 +39,7 @@ interface Props {
  * decision rather than a guess — the hidden part is only what your rivals are
  * doing this turn.
  */
-export const Board = ({ state, onCommit, busy = false, seat }: Props) => {
+export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Props) => {
   const human =
     state.players.find((player) => player.key === seat) ??
     state.players.find((player) => player.kind === "human");
@@ -193,155 +196,166 @@ export const Board = ({ state, onCommit, busy = false, seat }: Props) => {
         </div>
       </header>
 
-      <Chamber state={state} />
+      {/* Below the header the screen is the board you act on, with what just
+          happened kept in the margin beside it. The chamber goes in the acting
+          column rather than across the whole width: centred over the page it
+          sits off-centre from the cards underneath it, which are the same
+          subject drawn twice. */}
+      <div className="board-body">
+        <div className="board-main">
+          <Chamber state={state} />
 
-      <div className="parties">
-        {targets.map((party) => {
-          const mine = party.heldBy === human.key;
-          const pulling = withdrawFrom.includes(party.key);
-          const pending = bids[party.key] ?? [];
-          const pendingValue = valueOf(state, pending);
-          const current = pulling ? 0 : packageValue(state, party.key);
-          const blocked = refusalsAgainst(state, party, human.key);
+        <div className="parties">
+          {targets.map((party) => {
+            const mine = party.heldBy === human.key;
+            const pulling = withdrawFrom.includes(party.key);
+            const pending = bids[party.key] ?? [];
+            const pendingValue = valueOf(state, pending);
+            const current = pulling ? 0 : packageValue(state, party.key);
+            const blocked = refusalsAgainst(state, party, human.key);
 
-          return (
-            <div
-              key={party.key}
-              className={`party-card ${active === party.key ? "active" : ""} ${blocked.length ? "blocked" : ""} ${pulling ? "pulling" : ""}`}
-              // The bloc colour is handed to the card as a custom property
-              // rather than painted onto one element, so the spine, the wash
-              // behind the seat count and the hover glow are all the same
-              // politics without three copies of the value in the markup.
-              style={
-                {
-                  borderColor: party.heldBy ? playerColour(state, party.heldBy) : "var(--line)",
-                  "--bloc": BLOC_COLOUR[party.bloc],
-                } as CSSProperties
-              }
-            >
-              <span className="party-spine" />
-              {party.heldBy && (
-                <span
-                  className={`party-ribbon ${mine ? "mine" : ""}`}
-                  style={{ background: playerColour(state, party.heldBy) }}
-                >
-                  {mine ? "yours" : "bought"}
-                </span>
-              )}
-              <button className="party-hit" onClick={() => setActive(party.key)}>
-                <div className="party-head">
-                  <span className="party-seats">{party.seats}</span>
-                  <span className="party-name">{party.name}</span>
-                </div>
-                {/* How far through a majority this one list gets you. The
-                    number above says 12; the bar says 12 is a fifth of the
-                    way, which is the thing you are actually deciding. */}
-                <div
-                  className="party-mandates"
-                  title={`${party.seats} of the ${MAJORITY} needed`}
-                  style={{ "--share": `${Math.min(100, (party.seats / MAJORITY) * 100)}%` } as CSSProperties}
-                >
-                  <span />
-                </div>
-                <div className="party-sub">
-                  <span className="bloc" style={{ color: BLOC_COLOUR[party.bloc] }}>
-                    {BLOC_LABEL[party.bloc]}
-                  </span>
-                  <span className="holder" style={{ color: playerColour(state, party.heldBy) }}>
-                    {party.heldBy ? playerName(state, party.heldBy) : "unaligned"}
-                  </span>
-                </div>
-
-                {blocked.length > 0 && (
-                  <div className="redline">
-                    refuses you over {blocked.map((key) => state.parties[key]?.name).join(", ")}
-                  </div>
-                )}
-
-                <div className="party-price">
-                  <span className="current">{current > 0 ? `holding ${current}bn` : "no offer"}</span>
-                  {pendingValue > 0 && <span className="pending">+{pendingValue}bn</span>}
-                </div>
-
-                {pending.length > 0 && (
-                  <div className="party-chips">
-                    {pending.map((key) => (
-                      <span key={key} className="mini">
-                        {ministryByKey(state, key)?.name}
-                      </span>
-                    ))}
-                  </div>
-                )}
-              </button>
-
-              {mine && (
-                <button className="pull" onClick={() => toggleWithdraw(party.key)}>
-                  {pulling ? "keep them" : "pull out"}
-                </button>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className="tray">
-        <div className="tray-head">
-          <span>
-            {active
-              ? `Offering to ${state.parties[active]?.name}`
-              : "Pick a party, then tap portfolios"}
-          </span>
-          <span className={courting > OFFERS_PER_TURN ? "warn" : "ok"}>
-            {courting} of {OFFERS_PER_TURN} tables ·{" "}
-            {valueOf(state, hand.filter((k) => !assigned.has(k)))}bn still in hand
-          </span>
-        </div>
-
-        <div className="chips">
-          {hand.map((key) => {
-            const ministry = ministryByKey(state, key);
-            if (!ministry) return null;
-            const used = assigned.has(key);
-            // Nothing can be put down until a table is chosen to put it on.
-            const spent = !used && !active;
-            // Three denominations, so the hand can be read by colour at a
-            // glance instead of by adding up eighteen numbers.
-            const tier = ministry.budget >= 13 ? "high" : ministry.budget >= 7 ? "mid" : "low";
             return (
-              <button
-                key={key}
-                className={`chip ${used ? "used" : ""} ${spent ? "spent" : ""}`}
-                data-tier={tier}
-                onClick={() => toggleMinistry(key)}
-                title={`${ministry.name} — ${ministry.budget}bn`}
+              <div
+                key={party.key}
+                className={`party-card ${active === party.key ? "active" : ""} ${blocked.length ? "blocked" : ""} ${pulling ? "pulling" : ""}`}
+                // The bloc colour is handed to the card as a custom property
+                // rather than painted onto one element, so the spine, the wash
+                // behind the seat count and the hover glow are all the same
+                // politics without three copies of the value in the markup.
+                style={
+                  {
+                    borderColor: party.heldBy ? playerColour(state, party.heldBy) : "var(--line)",
+                    "--bloc": BLOC_COLOUR[party.bloc],
+                  } as CSSProperties
+                }
               >
-                <span className="chip-coin">{ministry.budget}</span>
-                <span className="chip-name">{ministry.name}</span>
-              </button>
+                <span className="party-spine" />
+                {party.heldBy && (
+                  <span
+                    className={`party-ribbon ${mine ? "mine" : ""}`}
+                    style={{ background: playerColour(state, party.heldBy) }}
+                  >
+                    {mine ? "yours" : "bought"}
+                  </span>
+                )}
+                <button className="party-hit" onClick={() => setActive(party.key)}>
+                  <div className="party-head">
+                    <span className="party-seats">{party.seats}</span>
+                    <span className="party-name">{party.name}</span>
+                  </div>
+                  {/* How far through a majority this one list gets you. The
+                      number above says 12; the bar says 12 is a fifth of the
+                      way, which is the thing you are actually deciding. */}
+                  <div
+                    className="party-mandates"
+                    title={`${party.seats} of the ${MAJORITY} needed`}
+                    style={{ "--share": `${Math.min(100, (party.seats / MAJORITY) * 100)}%` } as CSSProperties}
+                  >
+                    <span />
+                  </div>
+                  <div className="party-sub">
+                    <span className="bloc" style={{ color: BLOC_COLOUR[party.bloc] }}>
+                      {BLOC_LABEL[party.bloc]}
+                    </span>
+                    <span className="holder" style={{ color: playerColour(state, party.heldBy) }}>
+                      {party.heldBy ? playerName(state, party.heldBy) : "unaligned"}
+                    </span>
+                  </div>
+
+                  {blocked.length > 0 && (
+                    <div className="redline">
+                      refuses you over {blocked.map((key) => state.parties[key]?.name).join(", ")}
+                    </div>
+                  )}
+
+                  <div className="party-price">
+                    <span className="current">{current > 0 ? `holding ${current}bn` : "no offer"}</span>
+                    {pendingValue > 0 && <span className="pending">+{pendingValue}bn</span>}
+                  </div>
+
+                  {pending.length > 0 && (
+                    <div className="party-chips">
+                      {pending.map((key) => (
+                        <span key={key} className="mini">
+                          {ministryByKey(state, key)?.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </button>
+
+                {mine && (
+                  <button className="pull" onClick={() => toggleWithdraw(party.key)}>
+                    {pulling ? "keep them" : "pull out"}
+                  </button>
+                )}
+              </div>
             );
           })}
-          {hand.length === 0 && (
-            <span className="muted">
-              Everything you have is promised. Pull out of a partner to free a portfolio.
-            </span>
-          )}
         </div>
 
-        <div className="commit-row">
-          <button className="commit" disabled={problems.length > 0 || busy} onClick={() => {
-            onCommit(offer);
-            reset();
-          }}>
-            {busy ? "Resolving…" : state.phase === "forming" ? "End the week" : "End the year"}
-          </button>
-          <button className="ghost" onClick={reset}>
-            Clear
-          </button>
-          <span className="need">
-            {Math.max(0, MAJORITY - blocSeats(state, human.key))} more mandates for a majority
-          </span>
-          {problems.length > 0 && <span className="problem">{problems[0].message}</span>}
+        <div className="tray">
+          <div className="tray-head">
+            <span>
+              {active
+                ? `Offering to ${state.parties[active]?.name}`
+                : "Pick a party, then tap portfolios"}
+            </span>
+            <span className={courting > OFFERS_PER_TURN ? "warn" : "ok"}>
+              {courting} of {OFFERS_PER_TURN} tables ·{" "}
+              {valueOf(state, hand.filter((k) => !assigned.has(k)))}bn still in hand
+            </span>
+          </div>
+
+          <div className="chips">
+            {hand.map((key) => {
+              const ministry = ministryByKey(state, key);
+              if (!ministry) return null;
+              const used = assigned.has(key);
+              // Nothing can be put down until a table is chosen to put it on.
+              const spent = !used && !active;
+              // Three denominations, so the hand can be read by colour at a
+              // glance instead of by adding up eighteen numbers.
+              const tier = ministry.budget >= 13 ? "high" : ministry.budget >= 7 ? "mid" : "low";
+              return (
+                <button
+                  key={key}
+                  className={`chip ${used ? "used" : ""} ${spent ? "spent" : ""}`}
+                  data-tier={tier}
+                  onClick={() => toggleMinistry(key)}
+                  title={`${ministry.name} — ${ministry.budget}bn`}
+                >
+                  <span className="chip-coin">{ministry.budget}</span>
+                  <span className="chip-name">{ministry.name}</span>
+                </button>
+              );
+            })}
+            {hand.length === 0 && (
+              <span className="muted">
+                Everything you have is promised. Pull out of a partner to free a portfolio.
+              </span>
+            )}
+          </div>
+
+          <div className="commit-row">
+            <button className="commit" disabled={problems.length > 0 || busy} onClick={() => {
+              onCommit(offer);
+              reset();
+            }}>
+              {busy ? "Resolving…" : state.phase === "forming" ? "End the week" : "End the year"}
+            </button>
+            <button className="ghost" onClick={reset}>
+              Clear
+            </button>
+            <span className="need">
+              {Math.max(0, MAJORITY - blocSeats(state, human.key))} more mandates for a majority
+            </span>
+            {problems.length > 0 && <span className="problem">{problems[0].message}</span>}
+          </div>
         </div>
+        </div>
+
+        <Dispatch state={state} onOpen={(kind) => onOpenReport?.(kind)} />
       </div>
     </div>
   );

@@ -2,11 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 
 import { humanPlayers, pendingSeat } from "./engine/campaign";
 import { RULES_VERSION, TERM_LENGTH } from "./engine/types";
-import type { Offer, PlayerKind, TurnResult } from "./engine/types";
+import type { ElectionResult, Offer, PlayerKind, TurnResult } from "./engine/types";
 import { newGameId } from "./net/transport";
 import { transport, useGame } from "./net/useGame";
 import { Board } from "./ui/Board";
+import { ElectionReport } from "./ui/ElectionReport";
 import { playerColour } from "./ui/format";
+import { currentElection, currentReveal } from "./ui/reports";
 import { Reveal } from "./ui/Reveal";
 import { Setup } from "./ui/Setup";
 
@@ -19,6 +21,16 @@ const readHash = (): string | null => {
 export const App = () => {
   const [gameId, setGameId] = useState<string | null>(readHash);
   const [reveal, setReveal] = useState<TurnResult | null>(null);
+  const [election, setElection] = useState<ElectionResult | null>(null);
+  /**
+   * The election already put in front of this player, by the turn it happened.
+   *
+   * Election night follows the reveal rather than replacing it — the turn that
+   * brought the government down is worth reading before the result of it — so
+   * it opens on the reveal closing, and this is what stops it opening again
+   * every time they reopen the reveal from the side panel.
+   */
+  const [seenElection, setSeenElection] = useState<number | null>(null);
   /** The seat the screen has been handed to, as `turn:player`. Hot seat only. */
   const [handedTo, setHandedTo] = useState<string | null>(null);
   const game = useGame(gameId);
@@ -64,6 +76,16 @@ export const App = () => {
     if (last && last.turn !== reveal?.turn) setReveal(last);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [game.state?.lastTurn?.turn]);
+
+  // Everything the screen is holding belongs to one campaign. Opening another
+  // one has to put all of it down: what is on screen, what has been seen, and
+  // which seat the keyboard was handed to.
+  useEffect(() => {
+    setReveal(null);
+    setElection(null);
+    setSeenElection(null);
+    setHandedTo(null);
+  }, [gameId]);
 
   if (!gameId) return <Setup onStart={(options) => void start(options)} />;
   if (game.loading) return <div className="setup">Loading…</div>;
@@ -124,6 +146,30 @@ export const App = () => {
   const token = seat ? `${state.turn}:${seat.key}` : null;
   const covered = sharing && token !== null && handedTo !== token;
 
+  // Held in state, checked against the campaign: a report only stays on screen
+  // for as long as it is still this campaign's most recent one.
+  const open = {
+    reveal: currentReveal(state, reveal),
+    election: currentElection(state, election),
+  };
+
+  const closeReveal = () => {
+    setReveal(null);
+    const vote = state.lastElection;
+    if (vote && vote.turn === reveal?.turn && seenElection !== vote.turn) {
+      setSeenElection(vote.turn);
+      setElection(vote);
+    }
+  };
+
+  const openReport = (kind: "turn" | "election") => {
+    if (kind === "election") {
+      if (state.lastElection) setElection(state.lastElection);
+      return;
+    }
+    if (state.lastTurn) setReveal(state.lastTurn);
+  };
+
   return (
     <>
       {covered && seat ? (
@@ -150,11 +196,13 @@ export const App = () => {
           state={state}
           seat={seat?.key}
           onCommit={(a) => void commit(a)}
+          onOpenReport={openReport}
         />
       )}
       {game.error && <div className="error-toast">{game.error}</div>}
-      {reveal && (
-        <Reveal state={state} result={reveal} onClose={() => setReveal(null)} />
+      {open.reveal && <Reveal state={state} result={open.reveal} onClose={closeReveal} />}
+      {!open.reveal && open.election && (
+        <ElectionReport state={state} result={open.election} onClose={() => setElection(null)} />
       )}
     </>
   );
