@@ -10,6 +10,7 @@ import {
   OFFERS_PER_TURN,
   TERM_LENGTH,
   biddableParties,
+  blocSeats,
   ministryByKey,
 } from "../src/engine/types";
 import {
@@ -318,6 +319,24 @@ describe("reveal", () => {
     for (const key of offered) {
       expect(html).toContain(escapeHtml(ministryByKey(next, key)!.name));
     }
+  });
+
+  it("leads with where everybody stands, not with the bidding", () => {
+    const state = newCampaign({ seed: 105, humanParty: "likud", bots: ["greedy"] });
+    const next = applyAction(state, {
+      type: "offer",
+      playerKey: "you",
+      offer: greedyOffer(state, "you", new Rng(11)),
+    }).state;
+
+    const html = renderToString(<Reveal state={next} result={next.lastTurn!} onClose={noop} />);
+    // The one question a turn settles, for every player, at the top of the
+    // panel — before anything that explains how it got there.
+    for (const player of next.players) {
+      expect(html).toContain(escapeHtml(player.name));
+      expect(html).toContain(`>${blocSeats(next, player.key)}</div>`);
+    }
+    expect(html.indexOf("rev-standings")).toBeLessThan(html.indexOf("Changed hands"));
   });
 
   it("names who a party went to and who it came from", () => {

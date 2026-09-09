@@ -1035,7 +1035,59 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   50% { box-shadow: 0 2px 5px rgba(0, 0, 0, 0.45), inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, black), inset 0 -2px 3px rgba(0, 0, 0, 0.3), 0 0 18px 7px color-mix(in srgb, var(--accent) 65%, transparent); }
 }
 
-/* The turn read back in three passes: who walked, who moved, what it cost. */
+/*
+ * The standings, at the size of the thing they decide.
+ *
+ * This is the only question a turn actually settles, so it is the only thing in
+ * the panel drawn large. Each player gets their own colour, their total, what
+ * the turn did to it, and how much of the 61 that is — four facts in a block
+ * you read without reading, and the rest of the panel is the working behind
+ * them.
+ */
+.rev-standings {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  padding: 16px 22px 4px; flex: 0 0 auto;
+}
+.rev-standing {
+  flex: 1 1 130px; min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--who) 30%, var(--line));
+  border-radius: 12px; padding: 9px 12px 11px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--who) 9%, transparent), transparent 70%);
+}
+/* The delta is a bigger type than the name and is not always there, so the row
+   is given the taller of the two heights outright — otherwise a player who
+   gained nothing sits a pixel higher than one who did. */
+.rev-standing-head { display: flex; align-items: baseline; gap: 8px; min-height: 17px; }
+.rev-standing-name {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 10.5px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--who);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.rev-delta { font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.rev-delta.up { color: var(--good); }
+.rev-delta.down { color: var(--bad); }
+.rev-standing-seats {
+  font-size: 34px; font-weight: 800; letter-spacing: -0.04em;
+  font-variant-numeric: tabular-nums; line-height: 1.05; margin-top: 1px;
+}
+/* The same 61-wide track the party cards use, so a standing and a list are
+   measured against the same ruler on both screens. */
+.rev-standing-bar {
+  height: 3px; border-radius: 2px; margin-top: 7px; overflow: hidden;
+  background: color-mix(in srgb, var(--line) 70%, transparent);
+}
+.rev-standing-bar > span {
+  display: block; height: 100%; width: var(--share, 0%); border-radius: 2px;
+  background: var(--who);
+}
+/* Sixty-one. Nothing else on the panel needs to say anything. */
+.rev-standing[data-won="true"] {
+  border-color: var(--who);
+  box-shadow: 0 0 0 1px var(--who), 0 0 26px -8px var(--who);
+}
+
+/* The working: who walked, who moved, and — folded shut — what it all cost. */
 .rev-block { margin: 16px 0; }
 .rev-block h3 {
   margin: 0 0 8px; font-size: 10.5px; font-weight: 700;
@@ -1056,11 +1108,23 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
   font-variant-numeric: tabular-nums; font-size: 12px; color: var(--dim); text-align: right;
 }
 
-/* The one number that decided anything: mandates won and given up. */
-.rev-swing {
-  display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px;
-  font-size: 12px; font-weight: 800; font-variant-numeric: tabular-nums;
+/* Shut, this is a line of text; open, it is the longest thing on the panel. */
+.rev-more > summary {
+  cursor: pointer; list-style: none;
+  display: flex; align-items: center; gap: 7px;
+  font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.11em; color: var(--dim);
 }
+.rev-more > summary::-webkit-details-marker { display: none; }
+.rev-more > summary::before {
+  content: "";
+  width: 0; height: 0;
+  border: 4px solid transparent; border-left-color: currentColor;
+  transition: transform 0.14s ease;
+}
+.rev-more[open] > summary::before { transform: rotate(90deg) translateX(-1px); }
+.rev-more > summary:hover { color: var(--text); }
+.rev-more[open] > summary { margin-bottom: 8px; }
 
 .rev-table { margin-bottom: 10px; }
 .rev-table-head {
