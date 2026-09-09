@@ -10,7 +10,7 @@
  * Run with: npx vite-node scripts/balance.ts
  */
 
-import { greedyOffer, randomOffer } from "../src/bots";
+import { greedyOffer, randomOffer, shrewdOffer } from "../src/bots";
 import { PARTY_PROFILES } from "../src/engine/parties";
 import { YEARS_TO_WIN } from "../src/engine/types";
 import { playCampaign } from "../tests/harness";
@@ -73,6 +73,30 @@ for (const seed of SEEDS) {
   }
 }
 
+// Shrewd against greedy, swapped between the seats on the same board, because
+// the parties are wildly unequal and a naive comparison mostly measures who
+// drew the largest list.
+let shrewdWins = 0;
+let greedyHeadToHead = 0;
+for (const seed of SEEDS) {
+  const arms = [
+    { strategy: shrewdOffer, bot: "greedy" as const, humanIsShrewd: true },
+    { strategy: greedyOffer, bot: "shrewd" as const, humanIsShrewd: false },
+  ];
+  for (const arm of arms) {
+    const outcome = playCampaign({
+      seed,
+      humanParty: "likud",
+      bots: [arm.bot],
+      strategy: arm.strategy,
+      maxTurns: MAX_TURNS,
+    });
+    if (!outcome.finished) continue;
+    if (outcome.humanWon === arm.humanIsShrewd) shrewdWins += 1;
+    else greedyHeadToHead += 1;
+  }
+}
+
 for (const seed of SEEDS.slice(0, 80)) {
   const outcome = playCampaign({
     seed,
@@ -105,5 +129,10 @@ console.log(
 console.log(
   "greedy vs greedy:  ",
   `longest negotiation mean ${mean(contested).toFixed(1)}  p50 ${pct(contested, 0.5)}  p90 ${pct(contested, 0.9)}  max ${Math.max(...contested, 0)}`,
+);
+console.log(
+  "shrewd vs greedy:  ",
+  `${shrewdWins} to ${greedyHeadToHead}` +
+    ` (${((shrewdWins / Math.max(1, shrewdWins + greedyHeadToHead)) * 100).toFixed(1)}% to shrewd)`,
 );
 console.log("parties on board:  ", PARTY_PROFILES.length);

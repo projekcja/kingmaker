@@ -5,9 +5,11 @@ import type { GameState, Offer } from "../engine/types";
 import { emptyOffer, playerOf } from "../engine/types";
 import { greedyOffer } from "./greedy";
 import { randomOffer } from "./random";
+import { shrewdOffer } from "./shrewd";
 
 export { greedyOffer } from "./greedy";
 export { randomOffer } from "./random";
+export { shrewdOffer } from "./shrewd";
 
 /**
  * Decide a bot's move for this turn.
@@ -20,6 +22,8 @@ export const offerFor = (state: GameState, playerKey: string, rng: Rng): Offer =
   switch (player.kind) {
     case "greedy":
       return greedyOffer(state, playerKey, rng);
+    case "shrewd":
+      return shrewdOffer(state, playerKey, rng);
     case "random":
       return randomOffer(state, playerKey, rng);
     case "human":

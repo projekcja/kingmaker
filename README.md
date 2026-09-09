@@ -194,7 +194,9 @@ src/engine/     the rules, with no reference to the DOM
   deck.ts         the card stack — the only consumer of ideology
   campaign.ts     setup, the turn machine, elections, the win check
   rng.ts          seeded PRNG; the cursor lives in the game state
-src/bots/       random and greedy opponents, plus the language-model seat
+src/bots/       random, greedy and shrewd opponents, plus the language-model seat
+  greedy.ts       biggest lists first, bought by mandates per billion
+  shrewd.ts       the same turn, played against a rival rather than beside one
   llm.ts          the briefing, and reading a reply back into a legal move
 src/net/        persistence: a campaign is a seed plus its moves
 src/ui/         the interface
@@ -256,7 +258,12 @@ greedy bot's move goes to the engine directly or through a round trip of model-s
 `scripts/balance.ts` plays every seed twice with the strategies swapped between the same two seats,
 because the parties are wildly unequal and a naive comparison would mostly measure who drew Likud.
 
-Currently, on the 22nd Knesset it opens on: **greedy beats random 71.5%** over 480 campaigns, every
+> **These figures predate the standing red lines and have not been re-measured.** Permanent
+> refusals change what every campaign can reach, so the percentage below is the last measurement of
+> a different rule set. Run `npm run balance` to replace it; the probe now also plays shrewd against
+> greedy head to head, swapped between the seats on the same board.
+
+Previously, on the 22nd Knesset it opens on: **greedy beat random 71.5%** over 480 campaigns, every
 one of them reaching a winner, a campaign running a median of 18 turns across a mean of 4.25
 parliaments. Forming a coalition takes a median of 2 weeks — well inside the six-week limit, with
 head-to-head negotiations running to 19. Governments last a mean of 2.55 years, inside the four-year

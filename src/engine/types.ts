@@ -17,7 +17,7 @@ import type { Bloc } from "./parties";
  * whatever code is running now, so a mismatch has to be refused rather than
  * silently producing a different game.
  */
-export const RULES_VERSION = 5;
+export const RULES_VERSION = 6;
 
 export const YEARS_TO_WIN = 10;
 
@@ -46,7 +46,7 @@ export const FORMING_DEADLINE = 6;
  */
 export const TERM_LENGTH = 4;
 
-export type PlayerKind = "human" | "random" | "greedy";
+export type PlayerKind = "human" | "random" | "greedy" | "shrewd";
 
 export interface Player {
   key: string;

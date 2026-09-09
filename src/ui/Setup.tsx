@@ -21,6 +21,11 @@ interface Props {
 
 const BOT_SETS: Array<{ label: string; bots: PlayerKind[]; note: string }> = [
   { label: "One rival", bots: ["greedy"], note: "a rival who plays to win" },
+  {
+    label: "One shrewd rival",
+    bots: ["shrewd"],
+    note: "a rival who plays against you rather than beside you — it counts the seats you still need, buys the ones that would have finished your coalition, and does not overpay where nobody is bidding against it",
+  },
   { label: "One weak rival", bots: ["random"], note: "a rival with no plan at all" },
   { label: "Two rivals", bots: ["greedy", "random"], note: "crowded — three parties come off the market" },
   {

@@ -782,10 +782,24 @@ describe("what an election reports back", () => {
       for (const change of vote.ballot) {
         expect(change.seats).toBeGreaterThan(0);
         if (change.kind === "breakaway") {
-          // A breakaway is the one that puts unbought mandates on the market.
+          // A breakaway is the one that puts unbought mandates on the market --
+          // unless a later change on the same ballot takes it straight back
+          // off. Two realignments can fire per election and the second may act
+          // on the list the first invented, so a faction can walk out and fold
+          // again before anybody votes.
+          const after = vote.ballot.slice(vote.ballot.indexOf(change) + 1);
+          const removedLater = after.some(
+            (later) =>
+              (later.kind === "wound-up" && later.key === change.key) ||
+              (later.kind === "union" && later.parts.some((part) => part.key === change.key)),
+          );
           const standing = vote.standings.find((entry) => entry.partyKey === change.key);
-          expect(standing?.fresh).toBe(true);
-          expect(standing?.heldBy ?? null).toBeNull();
+          if (removedLater) {
+            expect(standing).toBeUndefined();
+          } else {
+            expect(standing?.fresh).toBe(true);
+            expect(standing?.heldBy ?? null).toBeNull();
+          }
         }
         if (change.kind === "wound-up") {
           // The list that folded is not on the ballot; its heir is.
