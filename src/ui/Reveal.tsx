@@ -69,15 +69,27 @@ export const Reveal = ({ state, result, onClose }: Props) => {
     ...new Set([...Object.keys(party.offered), ...Object.keys(party.bids)]),
   ];
 
+  const swornIn = result.swornIn;
+
   return (
     <div className="reveal-backdrop" onClick={onClose}>
-      <div className="reveal" onClick={(event) => event.stopPropagation()}>
-        {/* The bids were sealed until this panel opened; the seal says so. */}
+      <div
+        className="reveal"
+        data-coronation={swornIn ? "true" : undefined}
+        onClick={(event) => event.stopPropagation()}
+      >
+        {/* The bids were sealed until this panel opened; the seal says so —
+            unless this is the turn somebody crossed 61, in which case the
+            reveal has bigger news than who bid what. */}
         <div className="reveal-head">
           <span className="reveal-seal">
             <Emblem />
           </span>
-          <h2>The offers are opened</h2>
+          {swornIn ? (
+            <h2>{playerName(state, swornIn)} is sworn in as Prime Minister</h2>
+          ) : (
+            <h2>The offers are opened</h2>
+          )}
         </div>
 
         {/* Everything that reads back the turn scrolls in its own box, so the

@@ -360,7 +360,10 @@ const resolveTurn = (state: GameState): TurnResult => {
   }
 
   expireRefusals(state);
+  const pmBefore = state.primeMinister;
   advancePhase(state, rng);
+  const swornIn =
+    state.primeMinister && state.primeMinister !== pmBefore ? state.primeMinister : null;
 
   expireLegislation(state);
 
@@ -373,7 +376,7 @@ const resolveTurn = (state: GameState): TurnResult => {
       ? { playerKey: state.primeMinister, options: drawBill(state, rng, state.primeMinister) }
       : null;
 
-  const result: TurnResult = { turn: state.turn, parties, withdrawals, cards, laws };
+  const result: TurnResult = { turn: state.turn, parties, withdrawals, cards, laws, swornIn };
   state.lastTurn = result;
   state.offers = {};
   state.turn += 1;

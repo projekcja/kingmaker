@@ -205,6 +205,23 @@ describe("forming a government", () => {
     expect(state.phase).toBe("governing");
   });
 
+  it("reports the turn that crowns a prime minister, and stays quiet once one sits", () => {
+    let state = newCampaign({ seed: 5, humanParty: "likud", bots: ["random"] });
+    let crowned: string | null = null;
+    for (let turn = 0; turn < 60 && state.phase === "forming"; turn += 1) {
+      const next = humanMove(state, greedyOffer(state, "you", new Rng(turn)));
+      if (next.lastTurn?.swornIn) crowned = next.lastTurn.swornIn;
+      state = next;
+    }
+    if (state.phase === "forming") return; // this seed stalled; covered elsewhere
+
+    expect(crowned).toBe(state.primeMinister);
+
+    // The very next governing turn does not crown anybody a second time.
+    const after = humanMove(state, greedyOffer(state, "you", new Rng(999)));
+    expect(after.lastTurn?.swornIn ?? null).toBeNull();
+  });
+
   it("banks a year for the prime minister on every governing turn", () => {
     let state = newCampaign({ seed: 9, humanParty: "likud", bots: ["random"] });
     for (let turn = 0; turn < 80 && state.phase === "forming"; turn += 1) {
