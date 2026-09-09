@@ -289,6 +289,28 @@ describe("chamber", () => {
     if (!state.primeMinister) return;
     expect(renderToString(<Chamber state={state} />)).toContain("governing");
   });
+
+  it("leaves the benches nobody has bought in the middle, between the two sides", () => {
+    const state = playTurns(newCampaign({ seed: 6, humanParty: "likud", bots: ["greedy"] }), 3);
+    const html = renderToString(<Chamber state={state} />);
+
+    // The benches in seating order, as taken or free.
+    const benches = [...html.matchAll(/class="seat ([^"]*)"/g)].map((match) =>
+      match[1].includes("vacant") ? "free" : "taken",
+    );
+    expect(benches).toHaveLength(TOTAL_SEATS);
+
+    const free = benches.filter((bench) => bench === "free").length;
+    expect(free).toBeGreaterThan(0);
+
+    // One unbroken run of them, with somebody's bloc on either side: the ground
+    // between you and them, not a heap off the end of the drawing.
+    const first = benches.indexOf("free");
+    const last = benches.lastIndexOf("free");
+    expect(last - first + 1).toBe(free);
+    expect(benches[0]).toBe("taken");
+    expect(benches[benches.length - 1]).toBe("taken");
+  });
 });
 
 describe("reveal", () => {

@@ -239,11 +239,28 @@ export const Chamber = ({ state }: { state: GameState }) => {
     governing: player.key === state.primeMinister,
   }));
 
-  // Every seat gets an owner, in seating order: each bloc in turn, then the
-  // benches nobody has bought yet.
-  const owners: Array<(typeof blocs)[number] | null> = [];
-  for (const bloc of blocs) for (let i = 0; i < bloc.seats; i += 1) owners.push(bloc);
-  while (owners.length < TOTAL_SEATS) owners.push(null);
+  // The house fills from both ends: the first seat from the left, every rival
+  // from the right, and whatever nobody has bought yet is left in the middle.
+  //
+  // Stacking every bloc from the left put the free benches in a heap off the
+  // right-hand end, where they read as the edge of the drawing rather than as
+  // anything you could win. In the middle they are what they actually are: the
+  // ground between you and them, shrinking from both sides as the turns go by,
+  // and the thing the two blocs are closing on.
+  const owners: Array<(typeof blocs)[number] | null> = new Array(TOTAL_SEATS).fill(null);
+  let left = 0;
+  let right = TOTAL_SEATS - 1;
+  blocs.forEach((bloc, index) => {
+    for (let i = 0; i < bloc.seats; i += 1) {
+      if (index === 0) {
+        owners[left] = bloc;
+        left += 1;
+      } else {
+        owners[right] = bloc;
+        right -= 1;
+      }
+    }
+  });
 
   const leader = [...blocs].sort((a, b) => b.seats - a.seats)[0];
   const unaligned = owners.filter((owner) => owner === null).length;
