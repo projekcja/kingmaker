@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, KeyboardEvent } from "react";
 
 import { availableMinistries, validateOffer } from "../engine/allocation";
 import { ordinal } from "../engine/campaign";
@@ -116,6 +116,29 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
       return next;
     });
 
+  /**
+   * Arrow keys walk a group of controls; Tab still leaves it.
+   *
+   * Every control here is already a real button, so the keyboard could always
+   * reach them — but a turn is eighteen portfolios and up to a dozen parties,
+   * and reaching the last one meant thirty presses of Tab. Arrows move inside
+   * the group and wrap, which is what makes the board playable without a mouse
+   * rather than merely operable.
+   */
+  const walk = (selector: string) => (event: KeyboardEvent<HTMLElement>) => {
+    if (!["ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp"].includes(event.key)) return;
+    const items = [...event.currentTarget.querySelectorAll<HTMLButtonElement>(selector)].filter(
+      (item) => !item.disabled,
+    );
+    const here = items.indexOf(document.activeElement as HTMLButtonElement);
+    if (here === -1) return;
+    event.preventDefault();
+    const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+    items[(here + (forward ? 1 : -1) + items.length) % items.length]?.focus();
+  };
+
+  const canCommit = problems.length === 0 && !busy;
+
   /** Give a meeting back: clears that party's table, freeing the slot. */
   const clearTable = (partyKey: string) =>
     setBids((current) => {
@@ -168,7 +191,20 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
   const label = forming ? "weeks to form a government" : "years of this Knesset";
 
   return (
-    <div className="board" data-phase={state.phase} data-side={side}>
+    <div
+      className="board"
+      data-phase={state.phase}
+      data-side={side}
+      onKeyDown={(event) => {
+        // The turn is the one action worth a shortcut, and it is the one that
+        // is furthest from wherever the hand is when it is ready to be sent.
+        if (event.key !== "Enter" || !(event.ctrlKey || event.metaKey)) return;
+        if (!canCommit) return;
+        event.preventDefault();
+        onCommit(offer);
+        reset();
+      }}
+    >
       <header className="hud">
         <div className="hud-left">
           <Emblem className="hud-emblem" />
@@ -219,7 +255,7 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
         <div className="board-main">
           <Chamber state={state} />
 
-        <div className="parties">
+        <div className="parties" onKeyDown={walk(".party-hit")}>
           {targets.map((party) => {
             const mine = party.heldBy === human.key;
             const pulling = withdrawFrom.includes(party.key);
@@ -254,6 +290,7 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
                 )}
                 <button
                 className="party-hit"
+                aria-pressed={active === party.key}
                 onClick={() => setActive(party.key)}
                 title={
                   diaryFull && pending.length === 0
@@ -372,7 +409,11 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
           </div>
 
           <div className="tray-head">
-            <span className={diaryFull && active && !booked.includes(active) ? "warn" : ""}>
+            <span
+              role="status"
+              aria-live="polite"
+              className={diaryFull && active && !booked.includes(active) ? "warn" : ""}
+            >
               {diaryFull && active && !booked.includes(active)
                 ? `The diary is full. Cancel a meeting to sit down with ${state.parties[active]?.name}.`
                 : active
@@ -384,7 +425,7 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
             </span>
           </div>
 
-          <div className="chips">
+          <div className="chips" onKeyDown={walk(".chip")}>
             {hand.map((key) => {
               const ministry = ministryByKey(state, key);
               if (!ministry) return null;
@@ -399,6 +440,7 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
                   key={key}
                   className={`chip ${used ? "used" : ""} ${spent ? "spent" : ""}`}
                   data-tier={tier}
+                  aria-pressed={used}
                   onClick={() => toggleMinistry(key)}
                   title={`${ministry.name} — ${ministry.budget}bn`}
                 >
@@ -415,10 +457,15 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
           </div>
 
           <div className="commit-row">
-            <button className="commit" disabled={problems.length > 0 || busy} onClick={() => {
-              onCommit(offer);
-              reset();
-            }}>
+            <button
+              className="commit"
+              disabled={!canCommit}
+              title="Ctrl+Enter"
+              onClick={() => {
+                onCommit(offer);
+                reset();
+              }}
+            >
               {busy ? "Resolving…" : state.phase === "forming" ? "End the week" : "End the year"}
             </button>
             <button className="ghost" onClick={reset}>
@@ -427,7 +474,11 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
             <span className="need">
               {Math.max(0, MAJORITY - blocSeats(state, human.key))} more mandates for a majority
             </span>
-            {problems.length > 0 && <span className="problem">{problems[0].message}</span>}
+            {problems.length > 0 && (
+              <span role="status" aria-live="polite" className="problem">
+                {problems[0].message}
+              </span>
+            )}
           </div>
         </div>
         </div>

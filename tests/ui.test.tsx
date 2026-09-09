@@ -702,3 +702,28 @@ describe("the campaign history", () => {
     );
   });
 });
+
+describe("playing without a mouse", () => {
+  const board = (seed: number) =>
+    renderToString(<Board state={newCampaign({ seed })} onCommit={noop} />);
+
+  it("says which party and which portfolios are selected, not only shows it", () => {
+    const html = board(701);
+    // Selection was carried by colour and a border alone. aria-pressed is the
+    // same fact in the form a screen reader can read.
+    expect(html).toContain('aria-pressed="false"');
+    expect(html.match(/class="party-hit"/g) ?? []).not.toHaveLength(0);
+    expect(html).toContain("aria-pressed");
+  });
+
+  it("announces the tray's running commentary rather than only redrawing it", () => {
+    // The tray is the only feedback a refused move gets -- "the diary is full,
+    // cancel a meeting" -- so it has to be spoken, not just repainted.
+    expect(board(702)).toContain('role="status"');
+    expect(board(702)).toContain('aria-live="polite"');
+  });
+
+  it("offers a shortcut for the one action furthest from the hand", () => {
+    expect(board(703)).toContain("Ctrl+Enter");
+  });
+});
