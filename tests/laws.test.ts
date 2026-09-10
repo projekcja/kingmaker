@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { greedyOffer, randomOffer, shrewdOffer } from "../src/bots";
 import { newCampaign, rollSeats } from "../src/engine/campaign";
 import { PARTY_HISTORY, partyHistory } from "../src/engine/history";
 import { LAWS, ballotTilt, drawBill, enactLaw, expireLegislation, lawById } from "../src/engine/laws";
@@ -463,5 +464,48 @@ describe("the whole map of red lines", () => {
         (line.from === standing.to && line.to === standing.from),
     );
     expect(between).toHaveLength(1);
+  });
+});
+
+describe("the order paper reaches every seat", () => {
+  // The bot strategies drive rival seats in a real game and the player's own
+  // seat in every headless run. When only the engine's bot branch knew how to
+  // read the order paper, a strategy in the human seat passed nothing at all,
+  // for a silent handicap of three to fifteen points of win rate with the
+  // identical player on both sides. These lock the symmetry rather than the
+  // numbers.
+  const strategies = [
+    ["greedy", greedyOffer],
+    ["shrewd", shrewdOffer],
+    ["random", randomOffer],
+  ] as const;
+
+  for (const [name, offer] of strategies) {
+    it(`has ${name} answer the paper it is holding`, () => {
+      const state = govern(setup(7));
+      const rng = new Rng(3);
+      state.bill = { playerKey: "you", options: drawBill(state, rng, "you") };
+      expect(state.bill.options.length).toBeGreaterThan(0);
+
+      // Over several turns because passing nothing is a legal answer; never
+      // naming a bill at all is not.
+      const named = new Set<string>();
+      for (let turn = 0; turn < 12; turn += 1) {
+        const move = offer(state, "you", rng);
+        expect(move.law === null || state.bill.options.includes(move.law!)).toBe(true);
+        if (move.law) named.add(move.law);
+      }
+      expect(named.size).toBeGreaterThan(0);
+    });
+  }
+
+  it("gives no seat a bill that is not its own", () => {
+    const state = govern(setup(7));
+    const rng = new Rng(3);
+    state.bill = { playerKey: "bot1", options: drawBill(state, rng, "bot1") };
+
+    for (const [, offer] of strategies) {
+      expect(offer(state, "you", rng).law ?? null).toBeNull();
+    }
   });
 });

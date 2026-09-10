@@ -526,6 +526,47 @@ export const LAWS: Law[] = [
 export const lawById = (id: string): Law | undefined => LAWS.find((law) => law.id === id);
 
 /**
+ * The law a player's own politics would put on the order paper.
+ *
+ * Scores the paper against the blocs holding the player's coalition, weighted
+ * by seats: a law that helps the bloc behind most of its mandates is worth more
+ * than one that helps a three-seat partner. Abstains when nothing on the paper
+ * is actually good for it, which is a real move and stops a government passing
+ * hostile legislation against itself for want of anything better to do.
+ *
+ * This lives here, and not inside the campaign's turn resolution, because both
+ * seats need to be able to reach it. Which chair a player sits in must not
+ * decide whether they get to legislate at all.
+ */
+export const preferredLaw = (state: GameState, rng: Rng, playerKey: string): string | null => {
+  const bill = state.bill;
+  if (!bill || bill.playerKey !== playerKey || bill.options.length === 0) return null;
+
+  const weight = new Map<string, number>();
+  for (const party of blocParties(state, playerKey)) {
+    weight.set(party.bloc, (weight.get(party.bloc) ?? 0) + party.seats);
+  }
+  const total = [...weight.values()].reduce((sum, seats) => sum + seats, 0) || 1;
+
+  const scored = bill.options
+    .map((id) => lawById(id))
+    .filter((law): law is Law => Boolean(law))
+    .map((law) => {
+      let score = law.kind === "cabinet" ? 0.35 : 0;
+      for (const bloc of law.favours ?? []) score += (weight.get(bloc) ?? 0) / total;
+      for (const bloc of law.harms ?? []) score -= (weight.get(bloc) ?? 0) / total;
+      // A mood law that pleases the coalition is always worth something to the
+      // party holding the coalition together.
+      if (law.kind === "mood" && law.id === "coalition-funds") score += 0.6;
+      return { law, score: score + rng.range(-0.12, 0.12) };
+    })
+    .sort((a, b) => b.score - a.score);
+
+  const best = scored[0];
+  return best && best.score > 0.05 ? best.law.id : null;
+};
+
+/**
  * The three bills on this year's order paper.
  *
  * Drawn from what is actually available on this board, so a bill about the

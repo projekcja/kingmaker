@@ -20,7 +20,7 @@ import { newCampaign } from "../src/engine/campaign";
 import { Rng } from "../src/engine/rng";
 import type { GameState, Offer } from "../src/engine/types";
 import { biddableParties, freeMinistries } from "../src/engine/types";
-import { playCampaign, playCampaignAsync } from "./harness";
+import { playCampaign, playCampaignAsync, strategyRng } from "./harness";
 
 const setup = (seed = 31): GameState => newCampaign({ seed, humanParty: "likud" });
 
@@ -30,6 +30,7 @@ const asJson = (offer: Offer, thinking = "buying the biggest thing I can afford"
     thinking,
     withdrawFrom: offer.withdrawFrom,
     bids: offer.bids.map((bid) => ({ party: bid.partyKey, ministries: bid.ministries })),
+    law: offer.law ?? null,
   });
 
 describe("the briefing", () => {
@@ -214,9 +215,13 @@ describe("the seat", () => {
 
 describe("a campaign played through the model seat", () => {
   it("runs exactly as it would have without the round trip", async () => {
-    const rng = new Rng(99);
     // A "model" that speaks only JSON, and happens to think like the greedy bot.
+    // On the seat's own stream: the strategy reads the RNG when it picks a bill,
+    // so imitating it from a different stream would be imitating a different
+    // player and the round trip would be blamed for the difference.
+    let rng: Rng | null = null;
     const strategy = async (state: GameState, playerKey: string) => {
+      rng ??= strategyRng(state);
       const reply = asJson(greedyOffer(state, playerKey, rng));
       const parsed = parseReply(state, playerKey, reply);
       expect(parsed.problems).toEqual([]);

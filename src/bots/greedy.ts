@@ -15,6 +15,7 @@
  * stalemate once every portfolio is locked up.
  */
 
+import { preferredLaw } from "../engine/laws";
 import type { Rng } from "../engine/rng";
 import { cheapestAtLeast } from "./spend";
 import type { Bid, GameState, Offer, Party } from "../engine/types";
@@ -103,7 +104,7 @@ const targetCoalition = (state: GameState, playerKey: string): Party[] => {
   return targets;
 };
 
-export const greedyOffer = (state: GameState, playerKey: string, _rng: Rng): Offer => {
+const greedyBids = (state: GameState, playerKey: string, _rng: Rng): Offer => {
   let hand = freeMinistries(state, playerKey);
   if (hand.length === 0) return withdrawToRegroup(state, playerKey);
 
@@ -227,6 +228,19 @@ const withdrawToRegroup = (state: GameState, playerKey: string): Offer => {
   }
   return emptyOffer();
 };
+
+/**
+ * The bidding, plus the year's legislation.
+ *
+ * A strategy answers for the whole move or it is not answering for the seat:
+ * the same function drives a rival here and the player's own seat in every
+ * headless run, and a seat that names no law forfeits the government's one act
+ * of the year.
+ */
+export const greedyOffer = (state: GameState, playerKey: string, rng: Rng): Offer => ({
+  ...greedyBids(state, playerKey, rng),
+  law: preferredLaw(state, rng, playerKey),
+});
 
 /** Exposed for the balance probe. */
 export const gapToMajority = (state: GameState, playerKey: string): number =>
