@@ -44,7 +44,8 @@ export interface OfferProblem {
     | "withdraw-target"
     | "too-many"
     | "duplicate"
-    | "empty";
+    | "empty"
+    | "unknown-law";
   message: string;
 }
 

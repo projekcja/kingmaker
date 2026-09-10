@@ -77,7 +77,7 @@ const humanSeat = (state: GameState) => {
  * disturb the campaign stream — the bots and the deck must stay exactly where
  * they would have been.
  */
-const strategyRng = (state: GameState) => new Rng((state.seed ^ 0x5f3a) | 0);
+export const strategyRng = (state: GameState) => new Rng((state.seed ^ 0x5f3a) | 0);
 
 /** Play a campaign to its end, or until the cap. */
 export const playCampaign = (

@@ -14,7 +14,7 @@
 import { offerFor } from "../bots";
 import { applyRound, applyWithdrawals, resolveRound } from "./allocation";
 import { drawCard, expireRefusals, unusedName } from "./deck";
-import { LAWS, ballotTilt, drawBill, enactLaw, expireLegislation, lawById } from "./laws";
+import { ballotTilt, drawBill, enactLaw, expireLegislation, lawById } from "./laws";
 import { MINISTRIES } from "./ministries";
 import type { PartyProfile } from "./parties";
 import {
@@ -39,7 +39,6 @@ import {
   FORMING_DEADLINE,
   TERM_LENGTH,
   YEARS_TO_WIN,
-  blocParties,
   blocSeats,
   TheList,
   clamp,
@@ -223,54 +222,29 @@ export const applyAction = (input: GameState, action: Action): ActionResult => {
 };
 
 /**
- * Which bill the prime minister actually puts, human or otherwise.
+ * Which bill the prime minister actually puts.
  *
- * A human's choice rides in on their sealed offer, and is re-checked against
- * the order paper rather than trusted: a replayed action from an older campaign
- * could name a law that was never on offer, and the answer to that is to pass
- * nothing rather than to legislate something nobody chose.
+ * One path for every seat. A choice that rides in on the sealed offer settles
+ * it, and is re-checked against the order paper rather than trusted: a replayed
+ * action from an older campaign could name a law that was never on offer, and
+ * the answer to that is to pass nothing rather than to legislate something
+ * nobody chose.
  *
- * A bot scores the paper against its own politics — its list's bloc and its
- * partners' — using the `favours`/`harms` summaries rather than reading the
- * effects, which are closures. It abstains when nothing on the paper is
- * actually good for it, which is a real move and stops the rivals passing
- * hostile legislation against themselves for want of anything better to do.
+ * Nothing here reads what kind of player sent the offer. It used to: a human
+ * seat's law came off the offer, and a bot seat's was scored here instead. But
+ * the bot strategies are also what drives the human seat in every headless run,
+ * and they named no law, so that seat silently forfeited the government's one
+ * act of the year — worth between three and fifteen points of win rate, with
+ * the identical strategy on both sides. The scoring now lives in
+ * {@link ./laws#preferredLaw}, where a strategy can reach it, and every seat
+ * declares its choice the same way.
  */
-const chosenLaw = (state: GameState, rng: Rng, playerKey: string): string | null => {
+const chosenLaw = (state: GameState, playerKey: string): string | null => {
   const bill = state.bill;
   if (!bill || bill.options.length === 0) return null;
 
-  const player = playerOf(state, playerKey);
-  if (player.kind === "human") {
-    const wanted = state.offers[playerKey]?.law ?? null;
-    return wanted && bill.options.includes(wanted) ? wanted : null;
-  }
-
-  // What this bot's coalition is made of, weighted by seats: a law that helps
-  // the bloc holding most of its mandates is worth more than one that helps a
-  // three-seat partner.
-  const weight = new Map<string, number>();
-  for (const party of blocParties(state, playerKey)) {
-    weight.set(party.bloc, (weight.get(party.bloc) ?? 0) + party.seats);
-  }
-  const total = [...weight.values()].reduce((sum, seats) => sum + seats, 0) || 1;
-
-  const scored = bill.options
-    .map((id) => LAWS.find((law) => law.id === id))
-    .filter((law): law is NonNullable<typeof law> => Boolean(law))
-    .map((law) => {
-      let score = law.kind === "cabinet" ? 0.35 : 0;
-      for (const bloc of law.favours ?? []) score += (weight.get(bloc) ?? 0) / total;
-      for (const bloc of law.harms ?? []) score -= (weight.get(bloc) ?? 0) / total;
-      // A mood law that pleases the coalition is always worth something to the
-      // party holding the coalition together.
-      if (law.kind === "mood" && law.id === "coalition-funds") score += 0.6;
-      return { law, score: score + rng.range(-0.12, 0.12) };
-    })
-    .sort((a, b) => b.score - a.score);
-
-  const best = scored[0];
-  return best && best.score > 0.05 ? best.law.id : null;
+  const wanted = state.offers[playerKey]?.law ?? null;
+  return wanted && bill.options.includes(wanted) ? wanted : null;
 };
 
 /**
@@ -328,7 +302,7 @@ const resolveTurn = (state: GameState): TurnResult => {
   const laws: TurnResult["laws"] = [];
   if (state.bill) {
     const chooser = state.bill.playerKey;
-    const chosen = chosenLaw(state, rng, chooser);
+    const chosen = chosenLaw(state, chooser);
     if (chosen) {
       const text = enactLaw(state, rng, chooser, chosen);
       if (text) {

@@ -15,6 +15,7 @@
 
 import { validateOffer } from "../engine/allocation";
 import type { OfferProblem } from "../engine/allocation";
+import { lawById } from "../engine/laws";
 import { MAJORITY } from "../engine/parties";
 import type { Bid, GameState, Offer } from "../engine/types";
 import {
@@ -73,6 +74,14 @@ THE CLOCK
   board the game opened on. A bad result follows a party into the next parliament,
   and a list voted out of the Knesset does not come back.
 
+THE ORDER PAPER
+- While you are prime minister, each year your government may put one bill from
+  a three-bill paper, or pass nothing. The paper is listed in the position below
+  when it is yours to put; when it is not listed, you have no bill this year.
+- A law is the only move in the game that changes the rules rather than the
+  board. Passing nothing is a real choice, but passing nothing every year is a
+  government that does not use the one power it has.
+
 WINNING
 - ${YEARS_TO_WIN} years in power, across as many governments as it takes.
 
@@ -90,10 +99,13 @@ export const REPLY_FORMAT = `Reply with JSON and nothing else:
 
 {"thinking": "one or two sentences of reasoning",
  "withdrawFrom": ["party-key"],
- "bids": [{"party": "party-key", "ministries": ["ministry-key", "ministry-key"]}]}
+ "bids": [{"party": "party-key", "ministries": ["ministry-key", "ministry-key"]}],
+ "law": "law-id"}
 
 Use the keys from the tables, not the display names. At most ${OFFERS_PER_TURN}
-bids. "withdrawFrom" is usually empty. To pass the turn, send no bids.`;
+bids. "withdrawFrom" is usually empty. To pass the turn, send no bids. "law" is
+the id of one bill from the order paper, or null to pass nothing this year;
+leave it out entirely on any turn with no order paper.`;
 
 const pad = (text: string, width: number): string =>
   text.length >= width ? text : text + " ".repeat(width - text.length);
@@ -196,6 +208,18 @@ export const describePosition = (state: GameState, playerKey: string): string =>
     lines.push("LOCKED WITH YOUR PARTNERS -- only withdrawing frees these");
     for (const party of locked) {
       lines.push(`  ${pad(party.name, 22)} ${describePackage(state, party.package)}`);
+    }
+  }
+
+  // Only when it is this player's to put. A paper the model cannot act on is
+  // noise in the prompt, and the parser rejects a bill it was never offered.
+  if (state.bill && state.bill.playerKey === playerKey && state.bill.options.length > 0) {
+    lines.push("");
+    lines.push("THE ORDER PAPER -- your government may put one of these, or nothing");
+    for (const id of state.bill.options) {
+      const law = lawById(id);
+      if (!law) continue;
+      lines.push(`  ${pad(id, 24)} ${law.title} -- ${law.effect}`);
     }
   }
 
@@ -338,7 +362,26 @@ export const parseReply = (state: GameState, playerKey: string, reply: string): 
     withdrawFrom.push(partyKey);
   }
 
-  const offer: Offer = { bids, withdrawFrom };
+  // A bill this player was never offered is refused rather than quietly
+  // dropped, so a model naming one is told what it did instead of losing the
+  // year to silence. Absent or null both mean passing nothing.
+  let law: string | null = null;
+  if (parsed.law !== undefined && parsed.law !== null) {
+    const wanted = String(parsed.law);
+    const paper = state.bill?.playerKey === playerKey ? (state.bill?.options ?? []) : [];
+    if (paper.includes(wanted)) {
+      law = wanted;
+    } else {
+      problems.push({
+        code: "unknown-law",
+        message: paper.length
+          ? `${wanted} is not on this year's order paper. Choose one of: ${paper.join(", ")}.`
+          : "There is no order paper for you this turn, so no law can be put.",
+      });
+    }
+  }
+
+  const offer: Offer = { bids, withdrawFrom, law };
   problems.push(...validateOffer(state, playerKey, offer));
   return {
     offer,
