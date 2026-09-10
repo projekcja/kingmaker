@@ -14,6 +14,7 @@
 import { offerFor } from "../bots";
 import { applyRound, applyWithdrawals, resolveRound } from "./allocation";
 import { drawCard, expireRefusals, unusedName } from "./deck";
+import { applyWilds, drawWild } from "./wilds";
 import { ballotTilt, drawBill, enactLaw, expireLegislation, lawById } from "./laws";
 import { MINISTRIES } from "./ministries";
 import type { PartyProfile } from "./parties";
@@ -130,6 +131,7 @@ export const newCampaign = (options: CampaignOptions = {}): GameState => {
       kind: "human",
       partyKey: humanParty,
       yearsInPower: 0,
+      hand: [],
     },
     ...botKinds.map((kind, index) => ({
       key: `bot${index + 1}`,
@@ -137,6 +139,7 @@ export const newCampaign = (options: CampaignOptions = {}): GameState => {
       kind,
       partyKey: remaining[index]?.key ?? ranked[index + 1].key,
       yearsInPower: 0,
+      hand: [],
     })),
   ];
 
@@ -153,6 +156,7 @@ export const newCampaign = (options: CampaignOptions = {}): GameState => {
     emergencyUntil: 0,
     repairing: false,
     offers: {},
+    whipped: [],
     log: [],
     lastTurn: null,
     lastElection: null,
@@ -171,6 +175,10 @@ export const newCampaign = (options: CampaignOptions = {}): GameState => {
     "election",
     `The ${state.parliament}${ordinal(state.parliament)} Knesset is sworn in. ${MAJORITY} mandates form a government.`,
   );
+  // One card each, at the top of the parliament, dealt from the same stream as
+  // everything else so a campaign still replays from its seed alone.
+  for (const player of state.players) drawWild(state, rng, player.key);
+  state.rngState = rng.state;
   return state;
 };
 
@@ -259,6 +267,13 @@ const resolveTurn = (state: GameState): TurnResult => {
     state.offers[player.key] = offerFor(state, player.key, rng);
   }
 
+  // The cards come first. An ultimatum has to open a list before the auction
+  // reads its red lines, and a reshuffle has to free portfolios before the
+  // bids they are funding are weighed.
+  const wilds = applyWilds(state);
+  state.whipped = wilds.whipped;
+  for (const line of wilds.log) log(state, "deal", line);
+
   // Anyone walking away from a partner does so before the offers are opened,
   // which is what lets those portfolios fund this turn's bid.
   const withdrawals = applyWithdrawals(state);
@@ -289,8 +304,11 @@ const resolveTurn = (state: GameState): TurnResult => {
     }
   }
 
-  // A year in office is served before anything can take it away.
-  if (state.phase === "governing" || state.phase === "rebuilding") {
+  // A year in office is served before anything can take it away -- unless the
+  // house rose early, which buys the government a year off the term without
+  // banking one toward winning. The recess is a delay, not a gift.
+  const recessed = state.primeMinister !== null && wilds.recess.includes(state.primeMinister);
+  if ((state.phase === "governing" || state.phase === "rebuilding") && !recessed) {
     state.governmentYears += 1;
     if (state.primeMinister) playerOf(state, state.primeMinister).yearsInPower += 1;
   }
@@ -353,6 +371,8 @@ const resolveTurn = (state: GameState): TurnResult => {
   const result: TurnResult = { turn: state.turn, parties, withdrawals, cards, laws, swornIn };
   state.lastTurn = result;
   state.offers = {};
+  // The whip lasts the turn it was played and not a moment longer.
+  state.whipped = [];
   state.turn += 1;
   if (state.phase === "forming") state.week += 1;
   state.rngState = rng.state;
@@ -555,6 +575,11 @@ export const runElection = (
     "election",
     `The ${state.parliament}${ordinal(state.parliament)} Knesset is elected, and the bidding starts again.`,
   );
+
+  // A fresh card each for the new parliament, up to what a hand will hold. The
+  // opposition draws too: a card only the government gets is a lead that
+  // compounds, and this game already has enough of those.
+  for (const player of state.players) drawWild(state, rng, player.key);
 };
 
 // ---------------------------------------------------------------------------

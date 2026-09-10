@@ -28,6 +28,7 @@
 
 import { MAJORITY } from "../engine/parties";
 import { preferredLaw } from "../engine/laws";
+import { preferredWild } from "../engine/wilds";
 import type { Rng } from "../engine/rng";
 import { cheapestAtLeast } from "./spend";
 import type { Bid, GameState, Offer, Party } from "../engine/types";
@@ -314,9 +315,11 @@ const regroup = (state: GameState, playerKey: string): Offer => {
  * A strategy answers for the whole move or it is not answering for the seat:
  * the same function drives a rival here and the player's own seat in every
  * headless run, and a seat that names no law forfeits the government's one act
- * of the year.
+ * of the year, and one that never plays a card holds a lever the other seats
+ * are spending.
  */
 export const shrewdOffer = (state: GameState, playerKey: string, rng: Rng): Offer => ({
   ...shrewdBids(state, playerKey, rng),
   law: preferredLaw(state, rng, playerKey),
+  wild: preferredWild(state, playerKey),
 });

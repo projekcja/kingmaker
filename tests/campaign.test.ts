@@ -286,12 +286,25 @@ describe("the term", () => {
     expect(afterEarly.parliament).toBe(early.parliament);
     expect(afterEarly.phase).not.toBe("forming");
 
-    const last = sworn(4242);
-    last.governmentYears = TERM_LENGTH - 1;
-    last.emergencyUntil = 0;
-    const afterLast = humanMove(last, emptyOffer());
-    expect(afterLast.parliament).toBe(last.parliament + 1);
-    expect(afterLast.phase).toBe("forming");
+    // The last year has to be found rather than pinned to a seed. A card drawn
+    // on this very turn can declare a national emergency, which freezes the
+    // government and is a different rule working correctly -- the same reason
+    // the coalition-agreement test below scans instead of trusting one board.
+    let checkedLast = false;
+    for (const seed of SEEDS) {
+      const last = sworn(seed);
+      if (last.phase !== "governing") continue;
+      last.governmentYears = TERM_LENGTH - 1;
+      last.emergencyUntil = 0;
+      const afterLast = humanMove(last, emptyOffer());
+      if (afterLast.emergencyUntil > afterLast.turn) continue;
+
+      expect(afterLast.parliament).toBe(last.parliament + 1);
+      expect(afterLast.phase).toBe("forming");
+      checkedLast = true;
+      break;
+    }
+    expect(checkedLast).toBe(true);
   });
 
   it("lets a tenth year in power beat the calendar", () => {

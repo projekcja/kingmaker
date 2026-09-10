@@ -184,6 +184,44 @@ A test scrambles politics inside the range where no standing refusal can arise a
 bidding outcome changes, which is the part that has to stay true: the auction never prices a
 party by its opinions.
 
+### The hand
+Everything else in the game resolves the week it is played. A bid is committed and settled in the
+same turn; the deck is weather, in that it happens to you and is never yours to spend. Nothing on
+the board was about *timing*, which is a strange gap in a game about coalitions.
+
+A **wild** is the one thing a player keeps. One is dealt to each player at the top of every
+parliament, at most two are held at once — drawing past the limit discards the draw — and it is
+played on the sealed offer like everything else, so it is still spent blind against a rival
+deciding the same thing in the same envelope. There are four:
+
+| | |
+| --- | --- |
+| **The whip** | No party you hold changes hands this turn, whatever it is offered. |
+| **An ultimatum** | Strike every red line standing between you and one list. It does not come back. |
+| **A reshuffle** | Take back the portfolios locked with one partner, and keep the partner anyway. |
+| **The recess** | The house rises early. This year does not count against the term. |
+
+All four are levers on rules that already exist rather than new subsystems: one suspends the
+auction's verdict, one strikes a red line, one unlocks a package, one stops the clock. A fifth card
+wanting a mechanic of its own is a sign it should be a law or a deck card instead.
+
+They land before the auction resolves, which is what makes a wild a move rather than an
+announcement — an ultimatum opens a list to the same turn's bid, and a reshuffle funds it, through
+the same code path a withdrawal's freed portfolios take. The ultimatum is the only thing in the game
+that removes a standing refusal, and because a standing refusal is computed from geography rather
+than stored, it cannot be deleted: the strike is recorded against the player instead, and it is
+one player's arrangement rather than a change of heart.
+
+A card with no legal target cannot be played at all, rather than played to no effect. A wild is the
+scarcest thing a player has, and spending one on nothing is a rule teaching the wrong lesson. It
+still shows in the hand, greyed, because a whip that is absent while you hold no party never
+teaches why.
+
+Wilds narrowed the gap between the two thinking bots — shrewd beat greedy 65.8% before and 59.2%
+after — which is the expected shape rather than a regression. A card is a fixed-size lever, so it is
+worth proportionally more to the weaker position, and the deliberately conservative heuristic every
+seat shares (hold unless the board argues otherwise) leaves less room for a better plan to show.
+
 ## Layout
 
 ```
@@ -192,6 +230,7 @@ src/engine/     the rules, with no reference to the DOM
   ministries.ts   the eighteen portfolios and their budgets
   allocation.ts   sealed offers, resolution, tie-breaking, withdrawal
   deck.ts         the card stack — the only consumer of ideology
+  wilds.ts        the four cards a player holds, and what they do to a turn
   campaign.ts     setup, the turn machine, elections, the win check
   rng.ts          seeded PRNG; the cursor lives in the game state
 src/bots/       random, greedy and shrewd opponents, plus the language-model seat
@@ -258,12 +297,17 @@ greedy bot's move goes to the engine directly or through a round trip of model-s
 `scripts/balance.ts` plays every seed twice with the strategies swapped between the same two seats,
 because the parties are wildly unequal and a naive comparison would mostly measure who drew Likud.
 
-Re-measured after the home party started keeping a share of the cabinet: **greedy beats random
-70.6%** over 480 campaigns, every one of them reaching a winner, a campaign running a median of 18
-turns across a mean of 4.18 parliaments. Forming a coalition takes a median of 2 weeks — well inside
-the six-week limit, with head-to-head negotiations running to 14. Governments last a mean of 2.61
-years, inside the four-year term, so the term is a ceiling on the safe ones rather than the usual way
-one ends. **Shrewd beats greedy 60.6%.**
+Re-measured with the order paper reaching every seat and the wilds in play: **greedy beats random
+82.7%** over 480 campaigns, every one of them reaching a winner, a campaign running a median of 19
+turns across a mean of 4.25 parliaments. Forming a coalition takes a median of 2 weeks — well inside
+the six-week limit. Governments last a mean of 2.54 years, inside the four-year term, so the term is
+a ceiling on the safe ones rather than the usual way one ends. **Shrewd beats greedy 59.2%.**
+
+The evenly-matched tail is long and does not need shortening. Greedy against itself forms in a median
+of 2 weeks but ran to 61 on one board — a 400-seed probe put that at p90 7, p99 10, one campaign in
+400 over twenty weeks, and nothing at all hitting the turn cap. Two identical bots with identical
+money and no tiebreaker beyond the dice is exactly the position that should be able to deadlock, so
+the tail is the rule working rather than a stall to design out.
 
 `scripts/tune.ts` is the other half of this, and the one to reach for when changing a bot rather than
 a rule. It plays a matchup over four boards with the seats swapped — 3200 games a configuration —

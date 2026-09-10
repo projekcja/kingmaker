@@ -17,7 +17,7 @@ import type { Bloc } from "./parties";
  * whatever code is running now, so a mismatch has to be refused rather than
  * silently producing a different game.
  */
-export const RULES_VERSION = 8;
+export const RULES_VERSION = 9;
 
 export const YEARS_TO_WIN = 10;
 
@@ -56,6 +56,8 @@ export interface Player {
   partyKey: string;
   /** Banked years in office, across every government they have led. */
   yearsInPower: number;
+  /** Wild cards in hand; see {@link ./wilds}. At most {@link ./wilds#HAND_LIMIT}. */
+  hand: string[];
 }
 
 export interface Party {
@@ -82,6 +84,15 @@ export interface Party {
    * auction itself ever consulting it.
    */
   refusals: Array<{ partyKey: string; until: number }>;
+  /**
+   * Players this list has been talked round by an ultimatum.
+   *
+   * A carded refusal can simply be deleted, but a standing one falls out of
+   * where two lists sit and would be re-derived the moment it was removed. So
+   * the exception is recorded here instead, and {@link refusalsAgainst} reads
+   * it. It never lapses: the whole price of the card is that it is permanent.
+   */
+  struck?: string[];
 }
 
 /**
@@ -122,6 +133,14 @@ export interface Offer {
    * choice of passing nothing.
    */
   law?: string | null;
+  /**
+   * The wild card played this turn, if any; see {@link ./wilds}.
+   *
+   * Rides on the sealed offer for the same reason the bill does — it is part of
+   * the same move — and that is also what makes a wild interesting: it is
+   * committed blind, against a rival committing one the same week.
+   */
+  wild?: import("./wilds").WildPlay | null;
 }
 
 export const emptyOffer = (): Offer => ({ bids: [], withdrawFrom: [] });
@@ -319,6 +338,15 @@ export interface GameState {
 
   /** Sealed offers for the turn in progress, keyed by player. */
   offers: Record<string, Offer>;
+
+  /**
+   * Players whose coalitions cannot be broken into this turn.
+   *
+   * Written when the wilds resolve and cleared when the turn ends. It lives on
+   * the state rather than being threaded through because the auction is the
+   * thing that has to read it, and the auction is handed nothing but a board.
+   */
+  whipped: string[];
 
   log: LogEntry[];
   /** The most recent resolution, kept so the interface can show the reveal. */
@@ -650,6 +678,11 @@ export const standingRefusal = (a: Politics, b: Politics): boolean => {
 export const refusalsAgainst = (state: GameState, party: Party, playerKey: string): string[] => {
   const members = blocParties(state, playerKey);
   const bloc = new Set(members.map((member) => member.key));
+
+  // An ultimatum settles the question for good: this list has agreed to sit
+  // with this player, and neither a carded promise nor the geography of the
+  // board reopens it.
+  if (party.struck?.includes(playerKey)) return [];
 
   const carded = party.refusals
     .filter((refusal) => refusal.until > state.turn && bloc.has(refusal.partyKey))

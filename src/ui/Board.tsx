@@ -22,9 +22,11 @@ import {
   refusalsAgainst,
   valueOf,
 } from "../engine/types";
+import type { WildPlay } from "../engine/wilds";
 import { Chamber } from "./Chamber";
 import { Dispatch } from "./Dispatch";
 import { Bill } from "./Bill";
+import { Hand } from "./Hand";
 import { Emblem } from "./Emblem";
 import { RedLines } from "./RedLines";
 import { BLOC_COLOUR, playerColour, playerName } from "./format";
@@ -59,6 +61,8 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
   // The bill pencilled in for this year. Null is "pass nothing", which is a
   // choice rather than the absence of one, and it is also the default.
   const [law, setLaw] = useState<string | null>(null);
+  // The wild pencilled in, if any. Holding is the default and usually right.
+  const [wild, setWild] = useState<WildPlay | null>(null);
   const [dragging, setDragging] = useState<string | null>(null);
   const trayRef = useRef<HTMLDivElement | null>(null);
 
@@ -80,8 +84,9 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
         .map(([partyKey, ministries]) => ({ partyKey, ministries })),
       withdrawFrom,
       law,
+      wild,
     }),
-    [bids, withdrawFrom, law],
+    [bids, withdrawFrom, law, wild],
   );
 
   const problems = useMemo(
@@ -234,6 +239,7 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
     setBids({});
     setWithdrawFrom([]);
     setLaw(null);
+    setWild(null);
   };
 
   const forming = state.phase === "forming";
@@ -649,6 +655,18 @@ export const Board = ({ state, onCommit, busy = false, seat, onOpenReport }: Pro
               </span>
             )}
           </div>
+
+          {/*
+           * The hand, between the chips and the commit.
+           *
+           * Below the chips because a reshuffle is paid out into them: pencil
+           * the card in and the freed portfolios appear in the row above,
+           * inside the same envelope, before anything is sealed. Above the
+           * commit because it is the last thing weighed — a wild is spent on
+           * the guess about what the other side is doing this turn, which is
+           * the same guess the commit button is asking you to make.
+           */}
+          <Hand state={state} seat={human.key} chosen={wild} onChoose={setWild} />
 
           <div className="commit-row">
             <button

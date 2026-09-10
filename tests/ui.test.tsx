@@ -20,6 +20,7 @@ import {
   TOTAL_SEATS,
   chamberById,
 } from "../src/engine/parties";
+import { wildById } from "../src/engine/wilds";
 import { Board } from "../src/ui/Board";
 import { Chamber } from "../src/ui/Chamber";
 import { ElectionReport } from "../src/ui/ElectionReport";
@@ -887,5 +888,65 @@ describe("playing without a mouse", () => {
 
   it("offers a shortcut for the one action furthest from the hand", () => {
     expect(board(703)).toContain("Ctrl+Enter");
+  });
+});
+
+describe("the cards in your hand", () => {
+  const seat = (state: GameState, hand: string[]): GameState => {
+    const next = structuredClone(state);
+    next.players[0].hand = hand;
+    return next;
+  };
+
+  it("puts the card and what it does on the board, not behind a lookup", () => {
+    const state = seat(newCampaign({ seed: 810, humanParty: "likud" }), ["whip"]);
+    const html = renderToString(<Board state={state} onCommit={noop} />);
+
+    expect(html).toContain("Your hand");
+    const whip = wildById("whip")!;
+    expect(html).toContain(escapeHtml(whip.title));
+    // A card that has to be looked up is a card that gets held forever.
+    expect(html).toContain(escapeHtml(whip.effect));
+  });
+
+  it("says nothing at all when there is nothing to say", () => {
+    const state = seat(newCampaign({ seed: 811 }), []);
+    expect(renderToString(<Board state={state} onCommit={noop} />)).not.toContain("Your hand");
+  });
+
+  it("leaves an unplayable card on the table rather than hiding the rule", () => {
+    // Nothing held, so the whip defends nothing. It could be dropped from the
+    // panel; then a player would never learn why it is sometimes absent.
+    const state = seat(newCampaign({ seed: 812, humanParty: "likud" }), ["whip"]);
+    for (const party of Object.values(state.parties)) party.heldBy = null;
+    const html = renderToString(<Board state={state} onCommit={noop} />);
+
+    expect(html).toContain(escapeHtml(wildById("whip")!.title));
+    expect(html).toContain("Nothing on the board to play it against");
+    expect(html).toContain("wild dead");
+  });
+
+  it("counts a second copy rather than drawing a second decision", () => {
+    // Two in hand is still one play a turn, so it is a badge, not a row.
+    const state = seat(newCampaign({ seed: 813, humanParty: "likud" }), ["whip", "whip"]);
+    state.parties[biddableParties(state)[0].key].heldBy = "you";
+    const html = renderToString(<Board state={state} onCommit={noop} />);
+
+    expect(html.match(/class="wild-title"/g) ?? []).toHaveLength(1);
+    expect(html).toContain("×2");
+  });
+
+  it("aims a targeted card at named lists instead of at the board above", () => {
+    const state = seat(newCampaign({ seed: 814, humanParty: "likud" }), ["ultimatum"]);
+    const refusing = biddableParties(state).slice(0, 2);
+    for (const party of refusing) {
+      state.parties[party.key].refusals = [{ partyKey: "likud", until: state.turn + 10 }];
+    }
+    const html = renderToString(<Board state={state} onCommit={noop} />);
+
+    // Not aimed yet -- picking it up is a click away, and nothing is pencilled
+    // in until a list is named, so the panel is closed on a fresh render.
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).not.toContain("wild-target");
   });
 });
