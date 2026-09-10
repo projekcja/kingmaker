@@ -1607,6 +1607,75 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .bill-force-item.up { color: var(--good, #5fa86d); }
 .bill-force-item.down { color: var(--bad); }
 
+/* ---------------------------------------------------------------------------
+ * The hand.
+ *
+ * Everything else in the tray is money — counted, compared, and the bigger
+ * number wins. A wild is the other kind of decision: there is one, it does not
+ * scale, and the only question is when. So it is drawn as cards, warmer than
+ * the panels around it, and a card with nothing to play it against stays on the
+ * table greyed rather than vanishing — that a whip is unplayable while you hold
+ * no party is the card teaching the rule.
+ * ------------------------------------------------------------------------ */
+.hand-panel {
+  margin: 10px 0 2px; padding: 10px 12px 11px;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px;
+  border-left: 3px solid color-mix(in srgb, #c0a06a 55%, transparent);
+}
+.hand-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.hand-title {
+  font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em; color: var(--dim);
+}
+.hand-note { font-size: 11px; color: var(--dimmer); }
+
+/* Two at most, so they sit side by side and are read as a hand rather than as
+   a list of settings. */
+.hand-cards {
+  display: grid; gap: 7px; margin-top: 9px;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.wild { display: flex; flex-direction: column; }
+.wild-face {
+  display: block; width: 100%; height: 100%; text-align: left;
+  padding: 8px 10px; border-radius: 8px; cursor: pointer;
+  background: var(--panel); border: 1px solid var(--line); color: var(--text);
+}
+.wild-face:hover:not(:disabled) { border-color: var(--accent); }
+.wild.on .wild-face {
+  border-color: #c0a06a;
+  background: color-mix(in srgb, #c0a06a 12%, var(--panel));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #c0a06a 40%, transparent);
+}
+/* Present, unplayable, and legible as both. */
+.wild.dead .wild-face { opacity: 0.5; cursor: default; }
+
+.wild-head { display: flex; align-items: baseline; gap: 7px; }
+.wild-title { font-size: 12.5px; font-weight: 700; }
+.wild-copies {
+  font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums;
+  padding: 0 5px; border-radius: 8px; color: var(--dim); background: var(--panel-2);
+}
+.wild-effect {
+  display: block; margin-top: 3px;
+  font-size: 11.5px; line-height: 1.45; color: var(--dim);
+}
+.wild-dead { display: block; margin-top: 4px; font-size: 10.5px; color: var(--dimmer); }
+
+/* Whom it is played against. Named lists, not a mode over the board above. */
+.wild-targets { display: flex; flex-wrap: wrap; gap: 5px; margin: 6px 0 0 2px; }
+.wild-target {
+  padding: 3px 9px; border-radius: 9px; cursor: pointer;
+  font-size: 11px; font-weight: 700;
+  background: var(--panel); border: 1px solid var(--line); color: var(--dim);
+}
+.wild-target:hover { border-color: var(--accent); color: var(--text); }
+.wild-target.on { border-color: #c0a06a; color: var(--text); background: color-mix(in srgb, #c0a06a 18%, var(--panel)); }
+
+.wild-face:focus-visible,
+.wild-target:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
 /* A partner a law has pleased or offended, on the party card. */
 .party-mood { font-size: 10px; font-weight: 700; letter-spacing: 0.02em; }
 .party-mood.pleased { color: var(--good, #5fa86d); }

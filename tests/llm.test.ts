@@ -31,6 +31,7 @@ const asJson = (offer: Offer, thinking = "buying the biggest thing I can afford"
     withdrawFrom: offer.withdrawFrom,
     bids: offer.bids.map((bid) => ({ party: bid.partyKey, ministries: bid.ministries })),
     law: offer.law ?? null,
+    wild: offer.wild ? { id: offer.wild.id, party: offer.wild.partyKey } : null,
   });
 
 describe("the briefing", () => {

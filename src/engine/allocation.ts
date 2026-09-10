@@ -17,6 +17,7 @@
  */
 
 import type { GameState, Offer, PartyResult, Withdrawal } from "./types";
+import { canPlay } from "./wilds";
 import {
   OFFERS_PER_TURN,
   bidFor,
@@ -45,16 +46,24 @@ export interface OfferProblem {
     | "too-many"
     | "duplicate"
     | "empty"
-    | "unknown-law";
+    | "unknown-law"
+    | "unplayable-wild";
   message: string;
 }
 
 /** Everything this player could put on the table this turn. */
 export const availableMinistries = (state: GameState, playerKey: string, offer: Offer): string[] => {
-  const freed = offer.withdrawFrom.flatMap((partyKey) =>
-    state.parties[partyKey]?.heldBy === playerKey ? state.parties[partyKey].package : [],
-  );
-  return [...freeMinistries(state, playerKey), ...freed];
+  const unlocked = (partyKey: string | undefined): string[] =>
+    partyKey && state.parties[partyKey]?.heldBy === playerKey
+      ? state.parties[partyKey].package
+      : [];
+
+  const freed = offer.withdrawFrom.flatMap(unlocked);
+  // A reshuffle frees the same portfolios a withdrawal would, and lands at the
+  // same point in the turn, so it funds this turn's offer identically. The
+  // difference is only that the partner stays.
+  const reshuffled = offer.wild?.id === "reshuffle" ? unlocked(offer.wild.partyKey) : [];
+  return [...freeMinistries(state, playerKey), ...freed, ...reshuffled];
 };
 
 /**
@@ -116,6 +125,16 @@ export const validateOffer = (
     if (bid.ministries.length === 0 && party.heldBy !== playerKey) {
       problems.push({ code: "empty", message: "An offer of nothing at all is not an offer." });
     }
+  }
+
+  // A card that is not in hand, or has no business being played against this
+  // party on this board, is refused rather than fizzling: a wild is the
+  // scarcest thing a player holds.
+  if (offer.wild && !canPlay(state, playerKey, offer.wild)) {
+    problems.push({
+      code: "unplayable-wild",
+      message: `You cannot play ${offer.wild.id} here.`,
+    });
   }
 
   // A portfolio can only be promised to one party, and only if it is in hand.
@@ -229,6 +248,22 @@ export const resolveRound = (state: GameState): PartyResult[] => {
     const tied = Object.entries(bids)
       .filter(([, value]) => value === best)
       .map(([playerKey]) => playerKey);
+
+    // The whip: a coalition that has been whipped does not break this turn, at
+    // any price. Checked before the money so that it reads as the rule it is
+    // rather than an unbeatable bid.
+    if (party.heldBy && state.whipped.includes(party.heldBy)) {
+      results.push({
+        partyKey: party.key,
+        seats: party.seats,
+        bids,
+        offered,
+        previousHolder: party.heldBy,
+        newHolder: party.heldBy,
+        blocked,
+      });
+      continue;
+    }
 
     let winner: string | null = null;
     if (best > 0 && tied.length === 1) {

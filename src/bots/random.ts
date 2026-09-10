@@ -7,6 +7,8 @@
  */
 
 import type { Rng } from "../engine/rng";
+import { legalPlays } from "../engine/wilds";
+import type { WildPlay } from "../engine/wilds";
 import type { Bid, GameState, Offer } from "../engine/types";
 import { OFFERS_PER_TURN, biddableParties, emptyOffer, freeMinistries } from "../engine/types";
 
@@ -24,11 +26,25 @@ const randomLaw = (state: GameState, playerKey: string, rng: Rng): string | null
   return rng.pick([...bill.options, null]);
 };
 
+/**
+ * A card, now and then, chosen for no reason at all.
+ *
+ * Rarely on purpose: a baseline that spends every wild the turn it draws one is
+ * not a weak player, it is a different player, and the point of this bot is to
+ * be the floor the others are measured against.
+ */
+const randomWild = (state: GameState, playerKey: string, rng: Rng): WildPlay | null => {
+  const plays = legalPlays(state, playerKey);
+  if (plays.length === 0 || !rng.chance(0.15)) return null;
+  return rng.pick(plays);
+};
+
 export const randomOffer = (state: GameState, playerKey: string, rng: Rng): Offer => {
   const law = randomLaw(state, playerKey, rng);
+  const wild = randomWild(state, playerKey, rng);
   const targets = biddableParties(state).filter((party) => party.heldBy !== playerKey);
   let hand = freeMinistries(state, playerKey);
-  if (targets.length === 0 || hand.length === 0) return { ...emptyOffer(), law };
+  if (targets.length === 0 || hand.length === 0) return { ...emptyOffer(), law, wild };
 
   const chosen = rng.sample(targets, Math.min(OFFERS_PER_TURN, targets.length));
   const bids: Bid[] = [];
@@ -42,5 +58,5 @@ export const randomOffer = (state: GameState, playerKey: string, rng: Rng): Offe
     bids.push({ partyKey: party.key, ministries });
   }
 
-  return { bids, withdrawFrom: [], law };
+  return { bids, withdrawFrom: [], law, wild };
 };

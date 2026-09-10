@@ -16,6 +16,8 @@
 import { validateOffer } from "../engine/allocation";
 import type { OfferProblem } from "../engine/allocation";
 import { lawById } from "../engine/laws";
+import { canPlay, legalPlays, wildById } from "../engine/wilds";
+import type { WildPlay } from "../engine/wilds";
 import { MAJORITY } from "../engine/parties";
 import type { Bid, GameState, Offer } from "../engine/types";
 import {
@@ -82,6 +84,13 @@ THE ORDER PAPER
   board. Passing nothing is a real choice, but passing nothing every year is a
   government that does not use the one power it has.
 
+YOUR HAND
+- You hold up to two wild cards, drawn one per parliament. A card is the only
+  thing in this game you keep, so the decision is when to spend it, not whether.
+- You may play one a turn, sealed with the rest of the move. Your cards and the
+  plays open to you are listed in the position below; if none are listed you are
+  holding nothing playable this turn.
+
 WINNING
 - ${YEARS_TO_WIN} years in power, across as many governments as it takes.
 
@@ -105,7 +114,11 @@ export const REPLY_FORMAT = `Reply with JSON and nothing else:
 Use the keys from the tables, not the display names. At most ${OFFERS_PER_TURN}
 bids. "withdrawFrom" is usually empty. To pass the turn, send no bids. "law" is
 the id of one bill from the order paper, or null to pass nothing this year;
-leave it out entirely on any turn with no order paper.`;
+leave it out entirely on any turn with no order paper.
+
+To play a wild, add "wild": {"id": "card-id", "party": "party-key"} -- the
+"party" only for a card the position lists with a target. Leave "wild" out or
+null to hold your cards.`;
 
 const pad = (text: string, width: number): string =>
   text.length >= width ? text : text + " ".repeat(width - text.length);
@@ -220,6 +233,26 @@ export const describePosition = (state: GameState, playerKey: string): string =>
       const law = lawById(id);
       if (!law) continue;
       lines.push(`  ${pad(id, 24)} ${law.title} -- ${law.effect}`);
+    }
+  }
+
+  const plays = legalPlays(state, playerKey);
+  const holding = playerOf(state, playerKey).hand;
+  if (holding.length > 0) {
+    lines.push("");
+    lines.push("YOUR HAND");
+    for (const id of new Set(holding)) {
+      const card = wildById(id);
+      if (!card) continue;
+      const targets = plays.filter((play) => play.id === id && play.partyKey);
+      const where = card.targeted
+        ? targets.length
+          ? ` -- play against: ${targets.map((play) => play.partyKey).join(", ")}`
+          : " -- no legal target this turn"
+        : plays.some((play) => play.id === id)
+          ? ""
+          : " -- not playable this turn";
+      lines.push(`  ${pad(id, 24)} ${card.title}: ${card.effect}${where}`);
     }
   }
 
@@ -381,7 +414,31 @@ export const parseReply = (state: GameState, playerKey: string, reply: string): 
     }
   }
 
-  const offer: Offer = { bids, withdrawFrom, law };
+  // Same treatment as a bill it was never offered: refused with a reason, not
+  // dropped. A wild is the scarcest thing the seat holds.
+  let wild: WildPlay | null = null;
+  if (parsed.wild !== undefined && parsed.wild !== null) {
+    const given = parsed.wild as { id?: unknown; party?: unknown; partyKey?: unknown };
+    const id = typeof given.id === "string" ? given.id : "";
+    const target = given.party ?? given.partyKey;
+    const partyKey = typeof target === "string" ? resolveParty(state, target) : undefined;
+    const candidate: WildPlay = partyKey ? { id, partyKey } : { id };
+    if (canPlay(state, playerKey, candidate)) {
+      wild = candidate;
+    } else {
+      const open = legalPlays(state, playerKey)
+        .map((play) => (play.partyKey ? `${play.id} against ${play.partyKey}` : play.id))
+        .join(", ");
+      problems.push({
+        code: "unplayable-wild",
+        message: open
+          ? `You cannot play that card here. Open to you: ${open}.`
+          : "You are holding nothing playable this turn.",
+      });
+    }
+  }
+
+  const offer: Offer = { bids, withdrawFrom, law, wild };
   problems.push(...validateOffer(state, playerKey, offer));
   return {
     offer,
